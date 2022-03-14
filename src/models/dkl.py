@@ -1,7 +1,3 @@
-"""
-Utilities to support partition BO
-"""
-
 import gpytorch
 import os
 import random
