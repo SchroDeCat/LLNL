@@ -57,7 +57,6 @@ class InverseBasicFeatureExtractor(torch.nn.Sequential):
         self.add_module('relu2', torch.nn.ReLU())
         
         self.add_module('linear1', torch.nn.Linear(1000, data_dim))
-        # self.add_module('relu1', torch.nn.ReLU())
 
 class AE(torch.nn.Module):
     def __init__(self,  train_x, lr=1e-1):

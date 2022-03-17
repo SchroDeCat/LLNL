@@ -1,3 +1,7 @@
+"""
+Class for DKBO-OLP
+"""
+
 import gpytorch
 import os
 import random
@@ -13,6 +17,7 @@ import matplotlib as mpl
 import datetime
 import itertools
 
+from ..models import DKL
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -33,11 +38,12 @@ class DK_BO_OLP():
     """
     distinguish history
     """
-    def __init__(self, init_x_list, init_y_list, train_x, train_y, n_init:int=10, regularize=True, dynamic_weight=False, verbose=False, max_val:float=None, num_GP:int=2, pretrained_nn=None):
+    def __init__(self, init_x_list, init_y_list, train_x, train_y, lr=0.01, train_iter:int=10, n_init:int=10, regularize=False, dynamic_weight=False, verbose=False, max_val:float=None, num_GP:int=2, pretrained_nn=None):
         # scale input
         ROBUST = True
         ScalerClass = RobustScaler if ROBUST else StandardScaler
         # init vars
+        self.lr = lr
         self.regularize = regularize
         self.verbose = verbose
         self.n_init = n_init // num_GP
@@ -48,19 +54,16 @@ class DK_BO_OLP():
         self.train_x_list, self.train_y_list, self.init_x_list, self.init_y_list = [], [], init_x_list, init_y_list
         self.dkl_list = []
         self.maximum = max_val
+        self.train_iter = train_iter
         self.pretrained_nn = pretrained_nn
 
         for idx in range(num_GP):
             self.train_x_list.append(torch.from_numpy(ScalerClass().fit_transform(train_x[idx])).float())
             self.train_y_list.append(train_y[idx])
-            self.train_iter = 10
-            # self.init_x_list.append(self.train_x_list[-1][:n_init])
-            # self.init_y_list.append(self.train_y_list[-1][:n_init])
-            tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+            tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
             self.dkl_list.append(tmp_dkl)
 
         self.cuda = torch.cuda.is_available()
-        # gpytorch.add_jitter(self.dkl.model.)
 
         for idx in range(num_GP):
             self.train(idx)
@@ -90,22 +93,20 @@ class DK_BO_OLP():
             self.init_x_list[candidate_model_idx] = torch.cat([self.init_x_list[candidate_model_idx], self.train_x_list[candidate_model_idx][candidate_idx].reshape(1,-1)], dim=0)
             self.init_y_list[candidate_model_idx] = torch.cat([self.init_y_list[candidate_model_idx], self.train_y_list[candidate_model_idx][candidate_idx].reshape(1,-1)])
             # retrain
-            self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
-            # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
+            self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
             self.train(candidate_model_idx)
             # regret
-            # print(torch.cat(self.init_y_list).numpy(), self.maximum)
             self.regret[i] = self.maximum - torch.max(torch.cat(self.init_y_list))
             if self.regret[i] < 1e-10:
                 break
             if verbose:
                 iterator.set_postfix(loss=self.regret[i])
     
-    def ucb_func(self):
+    def ucb_func(self, x_tensor):
         for id, _dkl in enumerate(self.dkl_list):
             _dkl.model.eval()
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
-                    _observed_pred = _dkl.likelihood(_dkl.model(scaled_input_tensor.to(DEVICE)))
+                    _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))
                     _, _upper = _observed_pred.confidence_region()
             ucb = _upper if id == 0 else torch.max(ucb, _upper)
         return ucb.to('cpu')

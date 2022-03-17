@@ -13,6 +13,7 @@ import matplotlib as mpl
 import datetime
 import itertools
 
+from ..models import DKL
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -31,7 +32,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class DK_BO():
-    def __init__(self, train_x, train_y, n_init:int=10, regularize=True, dynamic_weight=False, verbose=False, max=None, fix_seed=True, train_iter=10):
+    def __init__(self, train_x, train_y, lr=0.01, n_init:int=10, regularize=True, dynamic_weight=False, verbose=False, max=None, fix_seed=True, train_iter=10):
         if fix_seed:
             # print(n_init+n_repeat*n_iter)
             # _seed = rep*n_iter + n_init
@@ -41,8 +42,6 @@ class DK_BO():
             random.seed(_seed)
             torch.cuda.manual_seed(_seed)
             torch.cuda.manual_seed_all(_seed)
-            os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
-            os.environ['PYTHONHASHSEED'] = str(_seed)
             torch.backends.cudnn.benchmark = False
             torch.backends.cudnn.deterministic = True
             torch.use_deterministic_algorithms(True)
@@ -65,9 +64,10 @@ class DK_BO():
         self.maximum = torch.max(self.train_y) if max==None else max
         self.init_x = self.train_x[:n_init]
         self.init_y = self.train_y[:n_init]
-        self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=True)
-        # self.cuda = torch.cuda.is_available()
-        self.cuda = False
+        self.lr = lr
+        self.dkl = DKL(self.init_x, self.init_y.squeeze(), lr=self.lr,  n_iter=self.train_iter, low_dim=True)
+        self.cuda = torch.cuda.is_available()
+        # self.cuda = False
         # gpytorch.add_jitter(self.dkl.model.)
 
         self.train()
@@ -89,7 +89,7 @@ class DK_BO():
             self.init_x = torch.cat([self.init_x, self.train_x[candidate_idx].reshape(1,-1)], dim=0)
             self.init_y = torch.cat([self.init_y, self.train_y[candidate_idx].reshape(1,-1)])
             # retrain
-            self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=True)
+            self.dkl = DKL(self.init_x, self.init_y.squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True)
             # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
             self.train()
             # regret

@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# sefl-defined
+/data
+/tmp
+/res

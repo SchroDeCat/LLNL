@@ -13,6 +13,7 @@ import matplotlib as mpl
 import datetime
 import itertools
 
+from ..models import DKL
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -86,10 +87,9 @@ class DK_BO_EM():
             self.init_y_list[candidate_model_idx] = torch.cat([self.init_y_list[candidate_model_idx], self.train_y_list[candidate_model_idx][candidate_idx].reshape(1,-1)])
             # retrain
             self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), n_iter=self.train_iter, low_dim=True)
-            # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
+            
             self.train(candidate_model_idx)
             # regret
-            # print(torch.cat(self.init_y_list).numpy(), self.maximum)
             self.regret[i] = self.maximum - torch.max(torch.cat(self.init_y_list))
             if self.regret[i] < 1e-10:
                 break

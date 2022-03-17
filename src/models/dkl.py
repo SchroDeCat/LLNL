@@ -31,9 +31,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DKL():
 
-    def __init__(self, train_x, train_y, n_iter=2, low_dim=False, pretrained_nn=None, test_split=False):
+    def __init__(self, train_x, train_y, n_iter=2, lr=0.01, low_dim=False, pretrained_nn=None, test_split=False):
         self.training_iterations = n_iter
-        self.lr = 0.01
+        self.lr = lr
         self.train_x = train_x
         self.train_y = train_y
         self._y = train_y
