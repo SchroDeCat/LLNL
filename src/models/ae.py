@@ -81,7 +81,7 @@ class AE(torch.nn.Module):
         self.train()
         self.losses = []
         self.train_x = self.train_x[:(self.train_x.size(0)//batch_size) * batch_size] # clip for batch training
-        iterator = tqdm.notebook.tqdm(range(epochs))
+        iterator = tqdm.tqdm(range(epochs))
         for epoch in iterator:
             for begin in range(self.train_x.size(0)//batch_size):
                 # Output of Autoencoder

@@ -77,7 +77,7 @@ class DK_BO_OLP():
     def query(self, n_iter:int=10, acq="ts", verbose=False):
         self.observed = []
         self.regret = np.zeros(n_iter)
-        iterator = tqdm.notebook.tqdm(range(n_iter)) if verbose else range(n_iter)
+        iterator = tqdm.tqdm(range(n_iter)) if verbose else range(n_iter)
 
         for i in iterator:
             candidate_idx_list, candidate_acq_values = [], []

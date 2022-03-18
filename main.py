@@ -48,16 +48,6 @@ if __name__ == "__main__":
     cli_parser.add_argument("-p",  action="store_true", default=False, help="flag of if plotting result")
     cli_parser.add_argument("-s",  action="store_true", default=False, help="flag of if storing result")
     cli_parser.add_argument("-n", action="store_true", default=False, help="flag of if negate the obj value to maximize")
-    # cli_parser.add_argument("-ndk", action="store_true", default=False, help="disable deep kernel")
-    # cli_parser.add_argument('-t', action="store_true", default=False, help="flag of if using test toy dataset")
-    # cli_parser.add_argument('-i', action="store_true", default=False,  help="flag of if using index kernel during test")
-    # cli_parser.add_argument('-td', action="store_true", default=False,  help="flag of if testing the distance shift in the latent space")
-    # cli_parser.add_argument('-a', action="store_true", default=False, help="flag of if using all the lower-fidelity points to pretrain")
-    # cli_parser.add_argument("-one_hot",  action="store_true", default=False, help="flag of if using one-hot embedding for fidelity mark")
-    # cli_parser.add_argument("--acq", nargs='?', default="ts", type=str, help="acquisition function. e.g. ucb, ts")
-    # cli_parser.add_argument("--kernel", nargs='?', default="Lin",type=str,help="kernel of base gaussian process. e.g. Lin, RBF, Matern, sm",)
-    # cli_parser.add_argument("--mtype", nargs='?', default="dkl", type=str, help="model type, e.g. gp, dkl")
-    # cli_parser.add_argument("--mode", nargs='?', default='normal', type=str, help="mode of the multi-fidelity algorithm ['normal', 'seq-rounds', 'opt-high', 'seq-queries', 'sf']")
     cli_parser.add_argument("--learning_rate", nargs='?', default=2, type=int, help="rank of the learning rate")
     # cli_parser.add_argument("--rho", nargs='?', default=4, type=int, help="neg rank of the rho")
     # cli_parser.add_argument("--Lambda", nargs='?', default=0, type=int, help="neg rank of the lambda")
@@ -68,7 +58,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
     # cli_parser.add_argument("--train_interval", nargs='?', default=1, type=int, help="retrain interval")
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
-    cli_parser.add_argument("--clustering", nargs='?', default="kmeans_y", type=str, help="cluster strategy")
+    cli_parser.add_argument("--clustering", nargs='?', default="kmeans-y", type=str, help="cluster strategy")
     cli_parser.add_argument("--n_partition", nargs='?', default=2, type=int, help="number of partition")
     cli_parser.add_argument("--cluster_interval", nargs='?', default=10, type=int, help="clustering interval")
     
@@ -84,30 +74,28 @@ if __name__ == "__main__":
     ScalerClass = RobustScaler if ROBUST else StandardScaler
     scaler = ScalerClass().fit(dataset[:,:-1])                   # obj foldx -> rosetta
     scaled_f_data = scaler.transform(dataset[:,:-1])
-    output_np = dataset[:,-1]
     scaled_input_tensor = torch.from_numpy(scaled_f_data).float()
-    output_tensor = torch.from_numpy(output_np).float()
+    output_tensor = dataset[:,-1].float()
     shuffle_filter = np.random.choice(scaled_f_data.shape[0], scaled_f_data.shape[0], replace=False)
-    train_output = torch.from_numpy(-output_np.reshape([-1,1])).float() if cli_args.n else torch.from_numpy(output_np.reshape([-1,1])).float()
+    train_output = -1 * output_tensor.reshape([-1,1]).float() if cli_args.n else output_tensor.reshape([-1,1]).float()
 
-    # # pretrain AE
-    # if not (cli_args.aedir is None) and cli_args.a:
-    #     ae = AE(scaled_input_tensor, lr=1e-3)
-    #     ae.train_ae(epochs=100, batch_size=200, verbose=True)
-    #     torch.save(ae.state_dict(), cli_args.aedir)
-    #     if cli_args.v:
-    #         print(f"pretrained ae stored in {cli_args.aedir}")
+    # pretrain AE
+    if not (cli_args.aedir is None) and cli_args.a:
+        ae = AE(scaled_input_tensor, lr=1e-3)
+        ae.train_ae(epochs=100, batch_size=200, verbose=True)
+        torch.save(ae.state_dict(), cli_args.aedir)
+        if cli_args.v:
+            print(f"pretrained ae stored in {cli_args.aedir}")
 
-    # # dkbo experiment
-    # verbose = cli_args.v
-    # fix_seed = cli_args.f
-    # lr_rank = -cli_args.learning_rate
-    # learning_rate = 10 ** lr_rank
+    # dkbo experiment
+    verbose = cli_args.v
+    fix_seed = cli_args.f
+    lr_rank = -cli_args.learning_rate
+    learning_rate = 10 ** lr_rank
 
 
-    # deep_kernel = not cli_args.ndk
-    # print(f"Learning rate {learning_rate}")
+    print(f"Learning rate {learning_rate}")
 
-    # ol_partition_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, init_strategy=cli_args.clustering, n_init=cli_args.init_num, n_repeat=cli_args.run_times, num_GP=cli_args.n_partition, 
-    #                     n_iter=cli_args.opt_horizon, cluster_interval=cli_args.interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name,
-    #                     plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=False, ae_loc=cli_args.aedir,)
+    ol_partition_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, init_strategy=cli_args.clustering, n_init=cli_args.init_num, n_repeat=cli_args.run_times, num_GP=cli_args.n_partition, 
+                        n_iter=cli_args.opt_horizon, cluster_interval=cli_args.cluster_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
+                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=False, ae_loc=cli_args.aedir,)

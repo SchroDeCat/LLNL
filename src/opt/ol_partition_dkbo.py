@@ -37,7 +37,7 @@ from sklearn.neighbors import NearestNeighbors
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, 
+def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, train_times=10,
                     n_iter=40, cluster_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True,
                     plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None,):
     max_val = y_tensor.max()
@@ -103,7 +103,7 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
                     init_y_list.append(init_y[cluster_init_filter].reshape([-1,1]))
                     # print(f"sizes {init_x_list[0].size()}, {init_y_list[0].size()} num_GP {num_GP}")
 
-                dkbo_olp = DK_BO_OLP(init_x_list, init_y_list, scaled_input_list, scaled_output_list, lr=lr, 
+                dkbo_olp = DK_BO_OLP(init_x_list, init_y_list, scaled_input_list, scaled_output_list, lr=lr, train_iter=train_times,
                                 n_init=n_init, regularize=False, dynamic_weight=False, max_val=max_val, num_GP=num_GP, pretrained_nn=ae)
                 # print("dkbo y list", torch.cat(dkbo_olp.init_y_list).max(), "dkbo Y list shape", torch.cat(dkbo_olp.init_y_list).size())
 
@@ -116,7 +116,7 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
                 reg_record[rep, iter:min(iter+cluster_interval, n_iter)] = dkbo_olp.regret
                 
                 # update ucb for clustering
-                ucb = dkbo_olp.ucb_func()
+                ucb = dkbo_olp.ucb_func(x_tensor=x_tensor)
                 for loc in dkbo_olp.observed:
                     cluster_filter = cluster_id==loc[0]
                     cluster_filter[:n_init] = True  # align with previous workaround
@@ -136,10 +136,14 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
     
     if plot_result:
         plt.plot(reg_output_record)
+        plt.ylabel("regret")
+        plt.xlabel("Iteration")
+        plt.title(f'simple regret for {name}')
+        plt.show()
 
     if save_result:
         assert not (save_path is None)
-        save_res(save_path=save_path, name=name, res=reg_record, n_repeat=n_repeat, num_GP=num_GP, n_iter=n_init, 
+        save_res(save_path=save_path, name=name, res=reg_record, n_repeat=n_repeat, num_GP=num_GP, n_iter=n_init, train_iter=train_times,
                 init_strategy=init_strategy, cluster_interval=cluster_interval, acq=acq, lr=lr, verbose=verbose,)
 
     if return_result:
