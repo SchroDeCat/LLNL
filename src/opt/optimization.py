@@ -39,7 +39,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, train_times=10,
                     n_iter=40, cluster_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True,
-                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None,):
+                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=True):
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
      # init dkl and generate ucb for partition
@@ -130,6 +130,18 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
                 # print(f"max n_init init_y {init_y[:n_init].max()} reg {obj - init_y[:n_init].max()}")
                 cluster_id_init = cluster_id[observed==1]
 
+                if study_partition:
+                    _path = f"{save_path}/OL-{name}-{init_strategy}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_times}"
+                    # _file_path = _path(save_path=save_path, name=name, init_strategy=init_strategy, n_repeat=n_repeat, n_iter=n_iter, num_GP=num_GP, cluster_interval=cluster_interval,  acq=acq, train_iter=train_times)
+                    fig = plt.figure()
+                    plt.scatter(y_tensor, ucb, c=cluster_id, s=2)
+                    plt.scatter(y_tensor[observed==1], ucb[observed==1], color='r', marker="*", s=5)
+                    plt.xlabel("Label")
+                    plt.ylabel("UCB")
+                    plt.colorbar()
+                    plt.title(f"{name} Iter {iter}")
+                    plt.savefig(f"{_path}-Iter{iter}.png")
+
     for rep in range(n_repeat):
         reg_record[rep] = np.minimum.accumulate(reg_record[rep])
     reg_output_record = reg_record.mean(axis=0)
@@ -139,7 +151,7 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        plt.show()
+        # plt.show()
 
     if save_result:
         assert not (save_path is None)
