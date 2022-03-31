@@ -16,6 +16,8 @@ import matplotlib as mpl
 import datetime
 import itertools
 
+from ..models import DKL
+
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -92,7 +94,7 @@ def LinearClustering(X, y, n_clusters=2, n_iter=-1):
     # ensure return
     return cluster_id
 
-def KernelRidgeClustering(X, y, n_clusters=2, n_iter=-1):
+def KernelRidgeClustering(X, y, n_clusters=2, n_iter=-1, dkl=False, **kwargs):
     '''
     Implementation of 
     [Spath, H. Correction to algorithm 39: clusterwise linear ̈regression. Computing 1981](https://link.springer.com/content/pdf/10.1007/BF02265317.pdf)
@@ -113,22 +115,38 @@ def KernelRidgeClustering(X, y, n_clusters=2, n_iter=-1):
         """
         Minimize the MSE for one step, return minimized MSE, new cluster id
         """
+        # print("minimizing")
         ## init reg models
         reg_models = [None for _ in range(n_clusters)]
         for idx in range(n_clusters):
             cluster_filter = cluster_id == idx
-            reg_models[idx] = KernelRidge().fit(X[cluster_filter], y[cluster_filter])
+            if dkl:
+                pretrained_nn = kwargs.get("pretrained_nn", None)
+                train_iter = kwargs.get("train_iter", 100)
+                reg_models[idx] = DKL(X[cluster_filter], y[cluster_filter], n_iter=train_iter, pretrained_nn=pretrained_nn)
+                reg_models[idx].train_model(verbose=False)
+            else:
+                reg_models[idx] = KernelRidge().fit(X[cluster_filter], y[cluster_filter])
         
         ## improve the clustering
         total_losses = np.zeros(X.shape[0])
-        for idx, point in enumerate(X):
-            # tmp_model = reg_models[0]
-            # tmp_point = point[np.newaxis, :]
-            # tmp_pred = tmp_model.predict(tmp_point)
-            losses = np.array([ (y[idx] - reg_models[model_id].predict(point[np.newaxis,:]).squeeze() )**2 for model_id in range(n_clusters)])
-            cluster_id[idx] = np.argmin(losses)
-            total_losses[idx] = np.min(losses)
-        
+        if dkl:
+            losses = np.hstack([ (y - reg_models[model_id].pure_predict(X.squeeze())).reshape(X.shape[0],1)**2 for model_id in range(n_clusters)])
+            cluster_id = np.argmin(losses, axis=-1)
+            total_losses = np.min(losses, axis=-1)
+            # print(losses.shape, cluster_id.shape, total_losses.shape)
+        else:
+            for idx, point in enumerate(X):
+                if idx % 100 == 0:
+                    # print("traversing ", idx)
+                # tmp_model = reg_models[0]
+                # tmp_point = point[np.newaxis, :]
+                # tmp_pred = tmp_model.predict(tmp_point)
+                    losses = np.array([ (y[idx] - reg_models[model_id].predict(point[np.newaxis,:]).squeeze() )**2 for model_id in range(n_clusters)])
+                    cluster_id[idx] = np.argmin(losses)
+                    total_losses[idx] = np.min(losses)
+            
+        # print("finish minimize")
         return np.mean(total_losses), cluster_id
 
 
@@ -140,7 +158,8 @@ def KernelRidgeClustering(X, y, n_clusters=2, n_iter=-1):
         loss = np.float("inf")
         while(True):
             next_loss, cluster_id = minimize_mse_one_step(X, y, cluster_id, n_clusters)
-            if np.abs(next_loss - loss) < THRESHOLD:
+            # print(f"next loss {next_loss} loss {loss}")
+            if np.abs(next_loss - loss) < THRESHOLD or next_loss > loss:
                 return cluster_id
             else:
                 loss = next_loss
@@ -153,7 +172,7 @@ def KernelRidgeClustering(X, y, n_clusters=2, n_iter=-1):
     return cluster_id
 
 
-def clustering_methods(input_tensor, label_tensor, n_cluster, method):
+def clustering_methods(input_tensor, label_tensor, n_cluster, method, **kwargs):
     '''
     Input: input feature vector, output label, number of cluster, clustering methods
     Output: clustering results
@@ -164,9 +183,16 @@ def clustering_methods(input_tensor, label_tensor, n_cluster, method):
     elif method == "linear_rc":
         cluster_id = LinearClustering(input_tensor.numpy(), label_tensor.numpy(), n_clusters=n_cluster)
     elif method == "gp_rc":
-        cluster_id = KernelRidgeClustering(input_tensor.numpy(), label_tensor.numpy(), n_clusters=n_cluster,)
+        dkl = kwargs.get("dkl", False)
+        pretrained_nn = kwargs.get("pretrained_nn", None)
+        train_iter = kwargs.get("train_iter", 100)
+        # print(f"dkl GP-RC {dkl} pretrained_nn {type(pretrained_nn)} n_iter {n_iter}")
+        x, y = (input_tensor, label_tensor) if dkl else (input_tensor.numpy(), label_tensor.numpy())
+        cluster_id = KernelRidgeClustering( x, y, n_clusters=n_cluster,dkl=dkl, pretrained_nn=pretrained_nn, train_iter=train_iter)
     elif method == "kmeans-y":
         label_np = label_tensor.numpy()[:,np.newaxis]
         y_Kmeans = KMeans(n_clusters=n_cluster, random_state=0).fit(label_np)
         cluster_id = y_Kmeans.predict(label_np)
+    else:
+        raise NotImplementedError(f"Partition method {method} not implemented")
     return cluster_id

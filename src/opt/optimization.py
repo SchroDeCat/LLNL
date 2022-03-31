@@ -1,5 +1,5 @@
 '''
-Full pipeline for DKBO-OLP
+Full pipeline for DKBO
 '''
 
 import gpytorch
@@ -20,6 +20,7 @@ import itertools
 from ..models import DKL, AE
 from ..utils import save_res, load_res, clustering_methods
 from .dkbo_olp import DK_BO_OLP
+from .dkbo_ae import DK_BO_AE
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -35,11 +36,63 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+STUDY_PARTITION = True
+
+def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True,
+                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
+    max_val = y_tensor.max()
+    reg_record = np.zeros([n_repeat, n_iter])
+
+    if pretrained:
+        assert not (ae_loc is None)
+        ae = AE(x_tensor, lr=1e-3)
+        ae.load_state_dict(torch.load(ae_loc, map_location=DEVICE))
+    else:
+        ae = None
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if fix_seed:
+            # print(n_init+n_repeat*n_iter)
+            # _seed = rep*n_iter + n_init
+            _seed = 70
+            torch.manual_seed(_seed)
+            np.random.seed(_seed)
+            random.seed(_seed)
+            torch.cuda.manual_seed(_seed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+        for rep in range(n_repeat):
+            # no AE pretrain 
+            if verbose:
+                print("DKBO")
+            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr,
+                                n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
+                                max=max_val, pretrained_nn=ae, verbose=verbose)
+            sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, study_res_path=save_path)
+            reg_record[rep, :] = sim_dkbo.regret
+
+    reg_output_record = reg_record.mean(axis=0)
+    if plot_result:
+        plt.plot(reg_output_record.squeeze(), label="dkbo")
+        plt.legend()
+        plt.xlabel("Iteration")
+        plt.ylabel("Regret")
+        plt.title("DKBO performance")
+        plt.show()
+
+    if save_result:
+        assert not (save_path is None)
+        save_res(save_path=save_path, name=name, res=reg_record, n_repeat=n_repeat, num_GP=1, n_iter=n_init, train_iter=train_iter,
+                init_strategy='none', cluster_interval=1, acq=acq, lr=lr, verbose=verbose,)
+
+    if return_result:
+        return reg_record
 
 
 def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, train_times=10,
                     n_iter=40, cluster_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True,
-                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=True):
+                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION):
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
      # init dkl and generate ucb for partition
@@ -80,8 +133,8 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))
                 _, ucb = _observed_pred.confidence_region()
-
-            cluster_id = clustering_methods(x_tensor, ucb.to('cpu'), num_GP, init_strategy)
+            # print(f"pretrained {pretrained} ae {type(ae)}  n_iter {train_times}")
+            cluster_id = clustering_methods(x_tensor, ucb.to('cpu'), num_GP, init_strategy, dkl=True, pretrained_nn=ae, train_iter=train_times)
             cluster_id_init = cluster_id[observed==1]
 
             # each test instance
@@ -122,7 +175,8 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
                     cluster_filter[:n_init] = True  # align with previous workaround
                     if sum(cluster_filter) > 0:
                         observed[util_array[cluster_filter][loc[1]]] = 1
-                cluster_id = clustering_methods(x_tensor, ucb, num_GP, init_strategy)
+                
+                cluster_id = clustering_methods(x_tensor, ucb, num_GP, init_strategy, dkl=True, pretrained_nn=ae, train_iter=train_times)
 
                 # update observed clustering
                 # init_x, init_y = torch.cat(dkbo_olp.init_x_list), torch.cat(dkbo_olp.init_y_list)

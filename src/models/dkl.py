@@ -145,7 +145,7 @@ class DKL():
             raise NotImplementedError(f"{loss_type} not implemented")
 
         def train(verbose=False):
-            iterator = tqdm.notebook.tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
+            iterator = tqdm.tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
             for i in iterator:
                 # Zero backprop gradients
                 self.optimizer.zero_grad()
@@ -195,6 +195,20 @@ class DKL():
             return MAE, preds.mean.cpu() if self.cuda else preds.mean
         else:
             return MAE
+    
+    def pure_predict(self, test_x,  return_pred=True):
+        '''
+        Different from predict, only predict value at given test_x and return the predicted mean by default
+        '''
+        self.model.eval()
+        self.likelihood.eval()
+        with torch.no_grad(), gpytorch.settings.use_toeplitz(False), gpytorch.settings.fast_pred_var():
+            preds = self.model(test_x)
+        self.model.train()
+        self.likelihood.train()
+
+        if return_pred:
+            return preds.mean.cpu()
 
     def latent_space(self, input_x):
         if eval:
@@ -229,7 +243,7 @@ class DKL():
         self.penalty = 0
 
         def train():
-            iterator = tqdm.notebook.tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
+            iterator = tqdm.tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
             for i in iterator:
                 # Zero backprop gradients
                 self.optimizer.zero_grad()

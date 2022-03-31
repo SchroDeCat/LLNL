@@ -48,3 +48,5 @@ def load_res(save_path, name, n_repeat=2, num_GP=2, n_iter=40, init_strategy:str
     if verbose:
         print(f"Data {data.shape()} loaded from {file_path}")
     return data
+
+

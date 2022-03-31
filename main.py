@@ -29,7 +29,7 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 from src.models import AE
-from src.opt import ol_partition_dkbo
+from src.opt import ol_partition_dkbo, pure_dkbo
 # from src.utils import 
 
 
@@ -48,6 +48,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("-p",  action="store_true", default=False, help="flag of if plotting result")
     cli_parser.add_argument("-s",  action="store_true", default=False, help="flag of if storing result")
     cli_parser.add_argument("-n", action="store_true", default=False, help="flag of if negate the obj value to maximize")
+    cli_parser.add_argument("-o", action="store_true", default=False, help="if partition the space")
     cli_parser.add_argument("--learning_rate", nargs='?', default=2, type=int, help="rank of the learning rate")
     # cli_parser.add_argument("--rho", nargs='?', default=4, type=int, help="neg rank of the rho")
     # cli_parser.add_argument("--Lambda", nargs='?', default=0, type=int, help="neg rank of the lambda")
@@ -57,6 +58,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
     # cli_parser.add_argument("--train_interval", nargs='?', default=1, type=int, help="retrain interval")
+    
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
     cli_parser.add_argument("--clustering", nargs='?', default="kmeans-y", type=str, help="cluster strategy")
     cli_parser.add_argument("--n_partition", nargs='?', default=2, type=int, help="number of partition")
@@ -79,6 +81,13 @@ if __name__ == "__main__":
     shuffle_filter = np.random.choice(scaled_f_data.shape[0], scaled_f_data.shape[0], replace=False)
     train_output = -1 * output_tensor.reshape([-1,1]).float() if cli_args.n else output_tensor.reshape([-1,1]).float()
 
+    # dkbo experiment
+    verbose = cli_args.v
+    fix_seed = cli_args.f
+    lr_rank = -cli_args.learning_rate
+    learning_rate = 10 ** lr_rank
+    pretrained = not (cli_args.aedir is None)
+
     # pretrain AE
     if not (cli_args.aedir is None) and cli_args.a:
         ae = AE(scaled_input_tensor, lr=1e-3)
@@ -87,15 +96,13 @@ if __name__ == "__main__":
         if cli_args.v:
             print(f"pretrained ae stored in {cli_args.aedir}")
 
-    # dkbo experiment
-    verbose = cli_args.v
-    fix_seed = cli_args.f
-    lr_rank = -cli_args.learning_rate
-    learning_rate = 10 ** lr_rank
 
-
-    print(f"Learning rate {learning_rate}")
-
-    ol_partition_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, init_strategy=cli_args.clustering, n_init=cli_args.init_num, n_repeat=cli_args.run_times, num_GP=cli_args.n_partition, 
+    print(f"Learning rate {learning_rate} Partition {cli_args.o}")
+    if cli_args.o:
+        ol_partition_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, init_strategy=cli_args.clustering, n_init=cli_args.init_num, n_repeat=cli_args.run_times, num_GP=cli_args.n_partition, 
                         n_iter=cli_args.opt_horizon, cluster_interval=cli_args.cluster_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
-                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=False, ae_loc=cli_args.aedir,)
+                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir,)
+    else:
+        pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, 
+                        n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_iter=cli_args.train_times,
+                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir,)
