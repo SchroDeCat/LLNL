@@ -5,6 +5,7 @@ Class for DKBO-OLP
 import gpytorch
 import os
 import random
+from sklearn import cluster
 import torch
 import tqdm
 import time
@@ -51,6 +52,8 @@ class DK_BO_OLP():
         self.Lambda = 1
         self.num_GP = num_GP
         self.dynamic_weight = dynamic_weight
+        self.train_x = train_x
+        self.train_y = train_y
         self.train_x_list, self.train_y_list, self.init_x_list, self.init_y_list = [], [], init_x_list, init_y_list
         self.dkl_list = []
         self.maximum = max_val
@@ -75,6 +78,7 @@ class DK_BO_OLP():
             self.dkl_list[idx].train_model()  
 
     def query(self, n_iter:int=10, acq="ts", verbose=False):
+        self.acq = acq
         self.observed = []
         self.regret = np.zeros(n_iter)
         iterator = tqdm.tqdm(range(n_iter)) if verbose else range(n_iter)
@@ -102,11 +106,30 @@ class DK_BO_OLP():
             if verbose:
                 iterator.set_postfix(loss=self.regret[i])
     
-    def ucb_func(self, x_tensor):
+    def ucb_func(self, method="max", **kwargs):
+        """
+        Supported Method: max, exact, sum
+        - max: maximum over multiple UCBs from those local GPs
+        - exact: exactly from the local GP it belongs to
+        - sum: balance between max & exact.
+        """
+        x_tensor = kwargs.get("x_tensor", self.train_x)
+        cluster_id = kwargs.get("cluster_id", None)
+        ucb_slot = torch.zeros(x_tensor.size(0))
         for id, _dkl in enumerate(self.dkl_list):
             _dkl.model.eval()
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                     _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))
                     _, _upper = _observed_pred.confidence_region()
-            ucb = _upper if id == 0 else torch.max(ucb, _upper)
+            if method.lower() == "max":
+                ucb = _upper if id == 0 else torch.max(ucb, _upper)
+            elif method.lower() == "sum":
+                ucb = _upper if id == 0 else ucb + _upper
+            elif method.lower() == "exact":
+                self.dkl_list[id].next_point(x_tensor[cluster_id == id], "ucb", "love", return_idx=False)
+                ucb_slot[cluster_id == id] = self.dkl_list[id].acq_val.to("cpu")
+            else:
+                raise NotImplementedError(f"{method} not implemented.")
+        if method.lower() == 'exact':
+            ucb = ucb_slot
         return ucb.to('cpu')

@@ -32,17 +32,17 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 
-def _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter):
-    return f"{save_path}/OL-{name}-{init_strategy}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_iter}"
+def _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter, ucb_strategy):
+    return f"{save_path}/OL-{name}-{init_strategy}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_iter}-US{ucb_strategy}"
 
-def save_res(save_path, name, res, n_repeat=2, num_GP=2, n_iter=40, init_strategy:str="kmeans", cluster_interval:int=1, acq:str='ts', lr:float=1e-3, train_iter:int=10, verbose=True):
-    file_path = _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter)
+def save_res(save_path, name, res, n_repeat=2, num_GP=2, n_iter=40, init_strategy:str="kmeans", cluster_interval:int=1, acq:str='ts', ucb_strategy="exact", lr:float=1e-3, train_iter:int=10, verbose=True):
+    file_path = _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter, ucb_strategy)
     np.save(file_path, res)
     if verbose:
         print(f"File stored to {file_path}")
 
-def load_res(save_path, name, n_repeat=2, num_GP=2, n_iter=40, init_strategy:str="kmeans",  cluster_interval:int=1, acq:str='ts', lr:float=1e-3,  train_iter:int=10, verbose=True):
-    file_path = _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter)
+def load_res(save_path, name, n_repeat=2, num_GP=2, n_iter=40, init_strategy:str="kmeans",  cluster_interval:int=1, acq:str='ts', ucb_strategy="exact", lr:float=1e-3,  train_iter:int=10, verbose=True):
+    file_path = _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter, ucb_strategy)
     file_path = f"{file_path}.npy"
     data = np.load(file_path)
     if verbose:

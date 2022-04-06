@@ -36,7 +36,8 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-STUDY_PARTITION = True
+# STUDY_PARTITION = True
+STUDY_PARTITION = False
 
 def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
@@ -91,8 +92,9 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
 
 
 def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, train_times=10,
-                    n_iter=40, cluster_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True,
+                    n_iter=40, cluster_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, ucb_strategy="exact",
                     plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION):
+    print(ucb_strategy)
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
      # init dkl and generate ucb for partition
@@ -113,8 +115,8 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
             # set seed
             if fix_seed:
                 # print(n_init+n_repeat*n_iter)
-                # _seed = rep*n_iter + n_init
-                _seed = 70
+                _seed = rep * n_iter + n_init
+                # _seed = 70
                 torch.manual_seed(_seed)
                 np.random.seed(_seed)
                 random.seed(_seed)
@@ -169,7 +171,7 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
                 reg_record[rep, iter:min(iter+cluster_interval, n_iter)] = dkbo_olp.regret
                 
                 # update ucb for clustering
-                ucb = dkbo_olp.ucb_func(x_tensor=x_tensor)
+                ucb = dkbo_olp.ucb_func(x_tensor=x_tensor, method=ucb_strategy, cluster_id=cluster_id)
                 for loc in dkbo_olp.observed:
                     cluster_filter = cluster_id==loc[0]
                     cluster_filter[:n_init] = True  # align with previous workaround
@@ -209,8 +211,8 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
 
     if save_result:
         assert not (save_path is None)
-        save_res(save_path=save_path, name=name, res=reg_record, n_repeat=n_repeat, num_GP=num_GP, n_iter=n_init, train_iter=train_times,
-                init_strategy=init_strategy, cluster_interval=cluster_interval, acq=acq, lr=lr, verbose=verbose,)
+        save_res(save_path=save_path, name=name, res=reg_record, n_repeat=n_repeat, num_GP=num_GP, n_iter=n_iter, train_iter=train_times,
+                init_strategy=init_strategy, cluster_interval=cluster_interval, acq=acq, lr=lr, ucb_strategy=ucb_strategy, verbose=verbose,)
 
     if return_result:
         return reg_record
