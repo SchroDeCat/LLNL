@@ -36,8 +36,66 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# STUDY_PARTITION = True
-STUDY_PARTITION = False
+STUDY_PARTITION = True
+# STUDY_PARTITION = False
+
+def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True,
+                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
+    '''
+    Check DKL opt behavior on full dataset
+    '''
+    max_val = y_tensor.max()
+    reg_record = np.zeros([n_repeat, n_iter])
+
+    if pretrained:
+        assert not (ae_loc is None)
+        ae = AE(x_tensor, lr=1e-3)
+        ae.load_state_dict(torch.load(ae_loc, map_location=DEVICE))
+    else:
+        ae = None
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if fix_seed:
+            # print(n_init+n_repeat*n_iter)
+            # _seed = rep*n_iter + n_init
+            _seed = 70
+            torch.manual_seed(_seed)
+            np.random.seed(_seed)
+            random.seed(_seed)
+            torch.cuda.manual_seed(_seed)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+        for rep in range(n_repeat):
+            # no AE pretrain 
+            if verbose:
+                print("DKBO")
+            sim_dkl = DKL(x_tensor, y_tensor.squeeze(), lr=lr, n_iter=train_iter, low_dim=True,  pretrained_nn=ae)
+            sim_dkl.train_model(loss_type="nll", verbose=True)
+            
+
+    if plot_result:
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            observed_pred = sim_dkl.likelihood(sim_dkl.model(x_tensor))
+            _, ucb = observed_pred.confidence_region()
+        _path = f"{save_path}/DKL-R{n_repeat}-whole_L{int(-np.log10(lr))}-TI{train_iter}"
+        # _file_path = _path(save_path=save_path, name=name, init_strategy=init_strategy, n_repeat=n_repeat, n_iter=n_iter, num_GP=num_GP, cluster_interval=cluster_interval,  acq=acq, train_iter=train_times)
+        fig = plt.figure()
+        plt.scatter(y_tensor, ucb, s=2)
+        plt.scatter(y_tensor, ucb, color='r', marker="*", s=5)
+        plt.xlabel("Label")
+        plt.ylabel("UCB")
+        plt.colorbar()
+        plt.title(f"{name}")
+        plt.savefig(f"{_path}.png")
+        print(f"Fig stored to {_path}")
+
+    if save_result:
+        pass
+
+    if return_result:
+        pass
+
 
 def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
@@ -197,6 +255,7 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
                     plt.colorbar()
                     plt.title(f"{name} Iter {iter}")
                     plt.savefig(f"{_path}-Iter{iter}.png")
+                    print(f"Fig stored to {_path}")
 
     for rep in range(n_repeat):
         reg_record[rep] = np.minimum.accumulate(reg_record[rep])

@@ -39,7 +39,8 @@ class DK_BO_OLP():
     """
     distinguish history
     """
-    def __init__(self, init_x_list, init_y_list, train_x, train_y, lr=0.01, train_iter:int=10, n_init:int=10, regularize=False, dynamic_weight=False, verbose=False, max_val:float=None, num_GP:int=2, pretrained_nn=None):
+    def __init__(self, init_x_list, init_y_list, train_x, train_y, lr=0.01, train_iter:int=10, n_init:int=10, regularize=False, 
+                        dynamic_weight=False, verbose=False, max_val:float=None, num_GP:int=2, pretrained_nn=None):
         # scale input
         ROBUST = True
         ScalerClass = RobustScaler if ROBUST else StandardScaler
@@ -65,6 +66,7 @@ class DK_BO_OLP():
             self.train_y_list.append(train_y[idx])
             tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
             self.dkl_list.append(tmp_dkl)
+            # print("init length scale", self.dkl_list[idx].model.covar_module.base_kernel.outputscale.item())
 
         self.cuda = torch.cuda.is_available()
 
@@ -75,7 +77,9 @@ class DK_BO_OLP():
         if self.regularize:
             self.dkl_list[idx].train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False, verbose=self.verbose)
         else:
-            self.dkl_list[idx].train_model()  
+            self.dkl_list[idx].train_model() 
+            # self.dkl_list[idx].model.covar_module.base_kernel.outputscale=1
+            # print(self.dkl_list[idx].model.covar_module.base_kernel.outputscale.item())
 
     def query(self, n_iter:int=10, acq="ts", verbose=False):
         self.acq = acq
@@ -133,3 +137,107 @@ class DK_BO_OLP():
         if method.lower() == 'exact':
             ucb = ucb_slot
         return ucb.to('cpu')
+
+
+class DK_BO_OLP_Batch(DK_BO_OLP):
+    """
+    Batched version of DK_BO_OLP and don't rely on precollected Y.
+    
+    Attributes
+    ----------
+    name: str
+        Name of active learning algo for record keeping.
+    dkl_list: List of DKL
+        underlying models.
+    n_init: int
+        number of points to initialize GP.
+    num_GP: int
+        number of partitions/ local GPs.
+    train_iter: int
+        training iteration for each GP.
+    acq: str
+        acquisition function (UCB, TS).
+    verbose: bool
+        if printing verbose information.
+    lr: float
+        learning rate of the model.
+    pretrained: bool
+        if using pretrained model to initialize the feature extracter of the DKL.
+    """
+
+    def __init__(self, init_x_list, init_y_list, lr:float=0.01, train_iter:int=10, n_init:int=10,
+                    verbose:bool=False, num_GP:int=2, pretrained_nn=None):
+        # init vars
+        self.lr = lr
+        self.verbose = verbose
+        self.n_init = n_init // num_GP
+        self.num_GP = num_GP
+        self.test_x_list, self.init_x_list, self.init_y_list = [], init_x_list, init_y_list
+        self.dkl_list = []
+        self.train_iter = train_iter
+        self.pretrained_nn = pretrained_nn
+
+        # init lists
+        for idx in range(num_GP):
+            # self.test_x_list.append(torch.from_numpy(ScalerClass().fit_transform(test_x[idx])).float())
+            tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+            self.dkl_list.append(tmp_dkl)
+
+        self.cuda = torch.cuda.is_available()
+
+        for idx in range(num_GP):
+            self.train(idx)
+    
+    def train(self, idx):
+        """
+        Train a certain DKL model in the model list.
+        """
+        # if self.regularize:
+        #     self.dkl_list[idx].train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False, verbose=self.verbose)
+        # else:
+        self.dkl_list[idx].train_model() 
+
+    def query(self, test_x, n_iter:int=10, acq="ts", verbose=False):
+        """
+        Use hallucinated points to better choose a batch to evaluate.
+        Scaler removed.
+
+        Input:
+        1. test_x: the search space
+        2. n_iter: num to choose in the batch.
+        3. acq: acqusition functions
+
+        Return:
+        A list of [partition_id, candidate_id]
+        """
+        # scale input
+        self.test_x = test_x
+        for idx in range(self.num_GP):
+            self.test_x_list.append(test_x[idx].float())
+        self.acq = acq
+        self.observed = []
+        iterator = tqdm.tqdm(range(n_iter)) if verbose else range(n_iter)
+
+        for i in iterator:
+            candidate_idx_list, candidate_acq_values = [], []
+            for idx in range(self.num_GP):
+                candidate_idx_list.append(self.dkl_list[idx].next_point(self.test_x_list[idx], acq, "love", return_idx=True))
+                candidate_acq_values.append(self.dkl_list[idx].acq_val[candidate_idx_list[-1]].to("cpu"))
+
+            candidate_model_idx = np.argmax(candidate_acq_values)
+            candidate_idx = candidate_idx_list[candidate_model_idx]
+            self.observed.append([candidate_model_idx, candidate_idx])
+            
+            # update specific model with hallucination
+            self.init_x_list[candidate_model_idx] = torch.cat([self.init_x_list[candidate_model_idx], self.test_x_list[candidate_model_idx][candidate_idx].reshape(1,-1)], dim=0)
+            __hallucination = self.dkl_list[candidate_model_idx].pure_predict(self.test_x_list[candidate_model_idx][candidate_idx].reshape(1,-1)).reshape(1,-1)
+            self.init_y_list[candidate_model_idx] = torch.cat([self.init_y_list[candidate_model_idx], __hallucination])
+            
+            # retrain
+            self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+            self.train(candidate_model_idx)
+
+        return self.observed[-n_iter]
+
+
+    

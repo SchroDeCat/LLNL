@@ -31,7 +31,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DKL():
 
-    def __init__(self, train_x, train_y, n_iter=2, lr=0.01, low_dim=False, pretrained_nn=None, test_split=False):
+    def __init__(self, train_x, train_y, n_iter=2, lr=0.01, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False):
         self.training_iterations = n_iter
         self.lr = lr
         self.train_x = train_x
@@ -42,6 +42,7 @@ class DKL():
         self.low_dim = low_dim
         self.cuda = torch.cuda.is_available()
         self.test_split = test_split
+        self.output_scale = output_scale
         # self.cuda = False
         # split the dataset
         total_size = train_y.size(0)
@@ -108,6 +109,7 @@ class DKL():
                     return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
     
         self.model = GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor)
+        self.model.covar_module.base_kernel.outputscale = self.output_scale
 
         if self.cuda:
             self.model = self.model.cuda()
