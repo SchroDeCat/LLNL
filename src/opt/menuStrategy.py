@@ -235,12 +235,25 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         location of the pretrained Auto Encoder.
     '''
 
-    def __init__(self, x_tensor, y_tensor, partition_strategy:str="kmeans-y", num_GP:int=3, train_times:int=10,
-                    acq:str="ts", verbose:bool=True, lr:float=1e-2, name:str="test", ucb_strategy:str="exact",
+    def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="kmeans-y", num_GP:int=3, 
+                    train_times:int=10, acq:str="ts", verbose:bool=True, lr:float=1e-2, name:str="test", ucb_strategy:str="exact",
                     fix_seed:bool=False, train:bool=True, pretrained:bool=False, ae_loc:str=None):
         '''
-        x_tensor: init x
-        y_tensor: init y
+        Args:
+            @x_tensor: init x
+            @y_tensor: init y
+            @partition_strategy: strategy for the partition.
+            @num_GP: desired number of local GPs.
+            @train_times: number of training iteration for the models.
+            @acq: acquisition function choice.
+            @verbose: if printing verbose info.
+            @lr: learning rate of the model.
+            @name: instance name.
+            @ucb_strategy: strategy to coordinate multiple local UCBs.
+            @fix_seed: if fixing the random seeds.
+            @train: if updating the model.
+            @pretrained: if using pretrained model to initilize the NN's weight.
+            @ae_loc: location of the pretrained Auto Encoder.
         '''
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.partition_strategy = partition_strategy
@@ -281,15 +294,24 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         self.init_y = y_tensor
         self.n_init = self.init_x.size(0)
         self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=True)
+        self._dkl.train_model()
         self._dkl.model.eval()
 
 
     
-    def select(self, X, i, k, **kwargs):
+    def select(self, X:torch.tensor, i:int, k:int, **kwargs):
         """
         Select k points from the N*D search space X of the fidelity i.
+
+        Args:
+            @X: N * D matrix to select from.
+            @i: fidelity number.
+            @k: number of points to be picked from X
+
+        Return:
+            :return: list of indices that were selected. 
+            :rtype: list
         """
-        _max_val = 0
         x_tensor = torch.cat([self.init_x, X]) # could result in duplication
         _data_size = x_tensor.size(0)
         _util_array = np.arange(_data_size)
@@ -308,7 +330,7 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         self.cluster_filter_list, self.cluster_idx_list = []
         for idx in range(self.num_GP):
             cluster_filter = self.cluster_id == idx
-            cluster_filter[:self.n_init] = True
+            cluster_filter[:self.n_init] = False # avoid querying the initial pts since it is not necessarily in X
             self.cluster_filter_list.append(cluster_filter)
             self.cluster_idx_list.append(_util_array[cluster_filter])
             # cluster_init_filter = self.cluster_id_init == idx
@@ -332,9 +354,29 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
             warnings.simplefilter("ignore")
             indices = self.model.query(test_x=test_x_list, n_iter=k, acq=acq, verbose=verbose) # list of (model_idx, candidate_idx)
         
+        # recover indices in original input X
+        # Question: what if the initial pts are queried? --> avoid picking these n_init pts
         selected_idx_list = []
         for (_model_idx, _candidate_idx) in indices:
-            _original_idx = self.cluster_idx_list[_model_idx][_candidate_idx]
+            _original_idx = self.cluster_idx_list[_model_idx][_candidate_idx] - self.n_init
+            assert _candidate_idx >= 0 and _candidate_idx < _data_size
             selected_idx_list.append(_original_idx)
         
         return selected_idx_list
+
+    def update(self,X,y,**kwargs):
+        """
+        Update internal model at `X` seqs with `y` observations
+        """
+        # self.model.resume_training(X,y,**kwargs)
+                    # retrain
+        # update the partitions
+        self.init_x = torch.cat([self.init_x, X])
+        self.init_y = torch.cat([self.init_y, y])
+        self.n_init = self.init_x.size(0)
+        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=True)
+        self._dkl.train_model()
+        self._dkl.model.eval()
+        # for idx in range(self.num_GP):
+        #     self.model.dkl_list[idx] = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+        #     self.model.train(idx)

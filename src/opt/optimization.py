@@ -152,7 +152,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
 def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, train_times=10,
                     n_iter=40, cluster_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, ucb_strategy="exact",
                     plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION):
-    print(ucb_strategy)
+    # print(ucb_strategy)
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
      # init dkl and generate ucb for partition
@@ -189,6 +189,7 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
             init_x = x_tensor[:n_init]
             init_y = y_tensor[:n_init]
             _dkl = DKL(init_x, init_y.squeeze(), n_iter=10, low_dim=True)
+            _dkl.train_model()
             _dkl.model.eval()
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))

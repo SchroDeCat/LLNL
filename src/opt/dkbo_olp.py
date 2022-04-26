@@ -197,13 +197,13 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
         # else:
         self.dkl_list[idx].train_model() 
 
-    def query(self, test_x, n_iter:int=10, acq="ts", verbose=False):
+    def query(self, test_x_list, n_iter:int=10, acq="ts", verbose=False):
         """
         Use hallucinated points to better choose a batch to evaluate.
         Scaler removed.
 
         Input:
-        1. test_x: the search space
+        1. test_x: the search spaces of each partition
         2. n_iter: num to choose in the batch.
         3. acq: acqusition functions
 
@@ -211,9 +211,9 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
         A list of [partition_id, candidate_id]
         """
         # scale input
-        self.test_x = test_x
+        self.test_x = test_x_list
         for idx in range(self.num_GP):
-            self.test_x_list.append(test_x[idx].float())
+            self.test_x_list.append(test_x_list[idx].float())
         self.acq = acq
         self.observed = []
         iterator = tqdm.tqdm(range(n_iter)) if verbose else range(n_iter)
