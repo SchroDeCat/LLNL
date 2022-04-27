@@ -227,8 +227,6 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         learning rate of the model.
     ucb_strategy: str
         strategy of coordinating UCB from multiple local GPs (exact, max, sum).
-    fix_seed: bool
-        fix seed of the randomness.
     pretrained: bool
         if using pretrained model to initialize the feature extracter of the DKL.
     ae_loc:
@@ -237,7 +235,7 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
 
     def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="kmeans-y", num_GP:int=3, 
                     train_times:int=10, acq:str="ts", verbose:bool=True, lr:float=1e-2, name:str="test", ucb_strategy:str="exact",
-                    fix_seed:bool=False, train:bool=True, pretrained:bool=False, ae_loc:str=None):
+                    train:bool=True, pretrained:bool=False, ae_loc:str=None):
         '''
         Args:
             @x_tensor: init x
@@ -250,7 +248,6 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
             @lr: learning rate of the model.
             @name: instance name.
             @ucb_strategy: strategy to coordinate multiple local UCBs.
-            @fix_seed: if fixing the random seeds.
             @train: if updating the model.
             @pretrained: if using pretrained model to initilize the NN's weight.
             @ae_loc: location of the pretrained Auto Encoder.
@@ -263,7 +260,6 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         self.lr = lr
         self.ucb_strategy = ucb_strategy
         self.pretrained = pretrained
-        self.fix_seed = fix_seed
         
         super().__init__(name=name, model=None, train=train, iters=train_times)
         self.train_times = self.iters
@@ -276,18 +272,6 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
             self.ae.load_state_dict(torch.load(ae_loc, map_location=self.device))
         else:
             self.ae = None
-
-        # fix the seed
-        if self.fix_seed:
-            # print(n_init+n_repeat*n_iter)
-            _seed = x_tensor.size(0)* self.train_times
-            # _seed = 70
-            torch.manual_seed(_seed)
-            np.random.seed(_seed)
-            random.seed(_seed)
-            torch.cuda.manual_seed(_seed)
-            torch.backends.cudnn.benchmark = False
-            torch.backends.cudnn.deterministic = True
 
         # initialize the model and partitioning
         self.init_x = x_tensor
@@ -327,7 +311,7 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         self.cluster_id_init = self.cluster_id[self.observed==1]
 
         init_x_list, init_y_list, test_x_list = [], [], []
-        self.cluster_filter_list, self.cluster_idx_list = []
+        self.cluster_filter_list, self.cluster_idx_list = [], []
         for idx in range(self.num_GP):
             cluster_filter = self.cluster_id == idx
             cluster_filter[:self.n_init] = False # avoid querying the initial pts since it is not necessarily in X
@@ -352,11 +336,12 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         candidate_indices = []
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            indices = self.model.query(test_x=test_x_list, n_iter=k, acq=acq, verbose=verbose) # list of (model_idx, candidate_idx)
+            indices = self.model.query(test_x_list=test_x_list, n_iter=k, acq=acq, verbose=verbose) # list of (model_idx, candidate_idx)
         
         # recover indices in original input X
         # Question: what if the initial pts are queried? --> avoid picking these n_init pts
         selected_idx_list = []
+        # print(f"indices {indices}")
         for (_model_idx, _candidate_idx) in indices:
             _original_idx = self.cluster_idx_list[_model_idx][_candidate_idx] - self.n_init
             assert _candidate_idx >= 0 and _candidate_idx < _data_size

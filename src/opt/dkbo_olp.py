@@ -170,7 +170,7 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
         # init vars
         self.lr = lr
         self.verbose = verbose
-        self.n_init = n_init // num_GP
+        self.n_init = n_init
         self.num_GP = num_GP
         self.test_x_list, self.init_x_list, self.init_y_list = [], init_x_list, init_y_list
         self.dkl_list = []
@@ -235,9 +235,10 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
             
             # retrain
             self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
-            self.train(candidate_model_idx)
+            self.train(candidate_model_idx) # the original framework of batched query do not engage retraining, 
+                                            # but we follows the recent study that empirically shows retraining provides better performance.
 
-        return self.observed[-n_iter]
+        return self.observed[-n_iter:]
 
 
     
