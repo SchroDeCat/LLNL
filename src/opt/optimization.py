@@ -36,8 +36,8 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-STUDY_PARTITION = True
-# STUDY_PARTITION = False
+# STUDY_PARTITION = True
+STUDY_PARTITION = False
 
 def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
