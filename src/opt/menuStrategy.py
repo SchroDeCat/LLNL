@@ -317,18 +317,12 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
             cluster_filter[:self.n_init] = False # avoid querying the initial pts since it is not necessarily in X
             self.cluster_filter_list.append(cluster_filter)
             self.cluster_idx_list.append(_util_array[cluster_filter])
-            # cluster_init_filter = self.cluster_id_init == idx
-            # cluster_init_filter[:self.n_init] = True
-            # print(f"cluster init {idx} size {sum(cluster_init_filter)} {cluster_id_init}")
-            # print(f"init_x size {init_x.size()}, observed num {sum(observed)}")
             test_x_list.append(x_tensor[cluster_filter])
             init_x_list.append(self.init_x)
             init_y_list.append(self.init_y.reshape([-1,1]))
-            # print(f"sizes {init_x_list[0].size()}, {init_y_list[0].size()} num_GP {num_GP}")
 
         self.model = DK_BO_OLP_Batch(init_x_list, init_y_list, lr=self.lr, train_iter=self.train_times,
                         n_init=self.n_init, num_GP=self.num_GP, pretrained_nn=self.ae)
-        # print("dkbo y list", torch.cat(dkbo_olp.init_y_list).max(), "dkbo Y list shape", torch.cat(dkbo_olp.init_y_list).size())
 
         # batched query
         acq = kwargs.get("acq", "ts")
@@ -341,7 +335,6 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         # recover indices in original input X
         # Question: what if the initial pts are queried? --> avoid picking these n_init pts
         selected_idx_list = []
-        # print(f"indices {indices}")
         for (_model_idx, _candidate_idx) in indices:
             _original_idx = self.cluster_idx_list[_model_idx][_candidate_idx] - self.n_init
             assert _candidate_idx >= 0 and _candidate_idx < _data_size
@@ -353,8 +346,6 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         """
         Update internal model at `X` seqs with `y` observations
         """
-        # self.model.resume_training(X,y,**kwargs)
-                    # retrain
         # update the partitions
         self.init_x = torch.cat([self.init_x, X])
         self.init_y = torch.cat([self.init_y, y])
@@ -362,6 +353,3 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=True)
         self._dkl.train_model()
         self._dkl.model.eval()
-        # for idx in range(self.num_GP):
-        #     self.model.dkl_list[idx] = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
-        #     self.model.train(idx)
