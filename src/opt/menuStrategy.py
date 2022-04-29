@@ -85,7 +85,6 @@ class BaseStrategy(object):
         with open(os.path.join(path, f'{self.name}'), 'wb') as f: 
             pickle.dump(self, f)
 
-
 class MenuStrategy(BaseStrategy):
     """
     Abstract class for a base ML predictor
