@@ -69,8 +69,13 @@ if __name__ == "__main__":
     cli_args = cli_parser.parse_args()
     ### load dataset
     assert not (cli_args.datadir is None)
-    dataset = torch.load(cli_args.datadir)  # want to find the maximal
+    if cli_args.datadir.endswith(".pt"):
+        dataset = torch.load(cli_args.datadir)  # want to find the maximal
+    elif cli_args.datadir.endswith(".npy"):
+        dataset = torch.from_numpy(np.load(cli_args.datadir))
     data_dim = dataset.shape[1]-1
+    # dataset = torch.load(cli_args.datadir)  # want to find the maximal
+    # data_dim = dataset.shape[1]-1
 
     # original Objective
     ROBUST = True

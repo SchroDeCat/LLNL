@@ -314,6 +314,8 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         for idx in range(self.num_GP):
             cluster_filter = self.cluster_id == idx
             cluster_filter[:self.n_init] = False # avoid querying the initial pts since it is not necessarily in X
+            if np.sum(cluster_filter) == 0:   # avoid empty class -- regress to single partition.
+                cluster_filter[self.n_init:] = True 
             self.cluster_filter_list.append(cluster_filter)
             self.cluster_idx_list.append(_util_array[cluster_filter])
             test_x_list.append(x_tensor[cluster_filter])

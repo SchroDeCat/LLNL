@@ -34,7 +34,9 @@ class DK_BO_AE():
     """
     Initialize the network with auto-encoder
     """
-    def __init__(self, train_x, train_y, n_init:int=10, lr=1e-2, train_iter:int=10, regularize=True, dynamic_weight=False, verbose=False, max=None, robust_scaling=True, pretrained_nn=None, record_loss=False):
+    def __init__(self, train_x, train_y, n_init:int=10, lr=1e-2, train_iter:int=10, regularize=True, 
+                dynamic_weight=False, verbose=False, max=None, robust_scaling=True, pretrained_nn=None, 
+                record_loss=False, **kwargs):
         # scale input
         ScalerClass = RobustScaler if robust_scaling else StandardScaler
         self.scaler = ScalerClass().fit(train_x)
@@ -50,8 +52,11 @@ class DK_BO_AE():
         self.train_y = train_y
         self.train_iter = train_iter
         self.maximum = torch.max(self.train_y) if max==None else max
-        self.init_x = self.train_x[:n_init]
-        self.init_y = self.train_y[:n_init]
+        self.init_x = kwargs.get("init_x", self.train_x[:n_init])
+        self.init_y = kwargs.get("init_y", self.train_y[:n_init])
+        # print(f"init_y_max {self.init_y.max()}")
+        self.observed = np.zeros(self.train_x.size(0)).astype("int")
+        # self.observed[:n_init] = True
         self.pretrained_nn = pretrained_nn
         self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=True, pretrained_nn=self.pretrained_nn)
         self.record_loss = record_loss
@@ -82,13 +87,15 @@ class DK_BO_AE():
         iterator = tqdm.tqdm(range(n_iter))
         study_interval = kwargs.get("study_interval", 10)
         _path = kwargs.get("study_res_path", None)
-        _candidate_idx_list = np.hstack([np.arange(self.n_init), np.zeros(n_iter)])
+        # _candidate_idx_list = np.hstack([np.arange(self.n_init), np.zeros(n_iter)])
+        _candidate_idx_list = np.zeros(n_iter)
         for i in iterator:
             candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True)
             _candidate_idx_list[i] = candidate_idx
             # print(self.init_x.size(),  self.train_x[candidate_idx].size())
             self.init_x = torch.cat([self.init_x, self.train_x[candidate_idx].reshape(1,-1)], dim=0)
             self.init_y = torch.cat([self.init_y, self.train_y[candidate_idx].reshape(1,-1)])
+            self.observed[candidate_idx] = 1
 
 
             if study_ucb and i % study_interval ==0:
@@ -117,5 +124,9 @@ class DK_BO_AE():
             if self.regret[i] < 1e-10:
                 break
             iterator.set_postfix(loss=self.regret[i])
+        # print(f"observed range in DKBO-AE {self.init_y.min()} {self.init_y.max()} max val {self.maximum}")
+        # print(f"observed range in DKBO-AE {self.train_y.min()} {self.train_y.max()} max val {self.maximum}")
+        # print(f"observed range in DKBO-AE {self.train_y[self.observed].min()} {self.train_y[self.observed].max()} max val {self.maximum}")
+        # print(f"observed range in DKBO-AE {self.train_y[self.observed==1].min()} {self.train_y[self.observed==1].max()} max val {self.maximum}")
 
 
