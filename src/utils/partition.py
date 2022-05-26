@@ -171,7 +171,6 @@ def KernelRidgeClustering(X, y, n_clusters=2, n_iter=-1, dkl=False, **kwargs):
     # ensure return
     return cluster_id
 
-
 def clustering_methods(input_tensor, label_tensor, n_cluster, method, **kwargs):
     '''
     Input: input feature vector, output label, number of cluster, clustering methods

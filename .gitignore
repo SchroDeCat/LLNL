@@ -133,3 +133,4 @@ dmypy.json
 /data
 /tmp
 /res
+.DS_Store

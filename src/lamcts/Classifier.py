@@ -20,7 +20,7 @@ from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-# from turbo_1.turbo_1 import Turbo1
+from ..turbo import Turbo1
 
 
 # the input will be samples!
@@ -187,7 +187,7 @@ class Classifier():
         assert len(cands) <= total
         return ratio, cands
 
-    def propose_rand_samples_probe(self, nums_samples, path, lb, ub):
+    def propose_rand_samples_probe(self, nums_samples, path, lb, ub, verbose=False):
 
         seed   = np.random.randint(int(1e6))
         sobol  = SobolEngine(dimension = self.dims, scramble=True, seed=seed)
@@ -223,9 +223,10 @@ class Classifier():
         final_L   = np.array( final_L )
         lb_       = np.clip( center - final_L/2, lb, ub )
         ub_       = np.clip( center + final_L/2, lb, ub )
-        print("center:", center)
-        print("final lb:", lb_)
-        print("final ub:", ub_)
+        if verbose:
+            print("center:", center)
+            print("final lb:", lb_)
+            print("final ub:", ub_)
     
         count         = 0
         cands         = np.array([])
@@ -340,32 +341,34 @@ class Classifier():
     ###########################
     # version 1: select a partition, perform one-time turbo search
 
-    # def propose_samples_turbo(self, num_samples, path, func):
-    #     #throw a uniform sampling in the selected partition
-    #     X_init = self.propose_rand_samples_sobol(30, path, func.lb, func.ub)
-    #     #get samples around the selected partition
-    #     print("sampled ", len(X_init), " for the initialization")
-    #     turbo1 = Turbo1(
-    #         f  = func,              # Handle to objective function
-    #         lb = func.lb,           # Numpy array specifying lower bounds
-    #         ub = func.ub,           # Numpy array specifying upper bounds
-    #         n_init = 30,            # Number of initial bounds from an Latin hypercube design
-    #         max_evals  = num_samples, # Maximum number of evaluations
-    #         batch_size = 1,         # How large batch size TuRBO uses
-    #         verbose=True,           # Print information from each batch
-    #         use_ard=True,           # Set to true if you want to use ARD for the GP kernel
-    #         max_cholesky_size=2000, # When we switch from Cholesky to Lanczos
-    #         n_training_steps=50,    # Number of steps of ADAM to learn the hypers
-    #         min_cuda=1024,          #  Run on the CPU for small datasets
-    #         device="cpu",           # "cpu" or "cuda"
-    #         dtype="float32",        # float64 or float32
-    #         X_init = X_init,
-    #     )
-    #
-    #     proposed_X, fX = turbo1.optimize( )
-    #     fX = fX*-1
-    #
-    #     return proposed_X, fX
+    def propose_samples_turbo(self, num_samples, path, func):
+        #throw a uniform sampling in the selected partition
+        # X_init = self.propose_rand_samples_sobol(30, path, func.lb, func.ub)
+        #get samples around the selected partition
+        # print("sampled ", len(X_init), " for the initialization")
+        turbo1 = Turbo1(
+            f  = lambda x: -func(x),              # Handle to objective function
+            lb = func.lb,           # Numpy array specifying lower bounds
+            ub = func.ub,           # Numpy array specifying upper bounds
+            n_init = 30,            # Number of initial bounds from an Latin hypercube design
+            max_evals  = num_samples, # Maximum number of evaluations
+            batch_size = 1,         # How large batch size TuRBO uses
+            verbose=True,           # Print information from each batch
+            use_ard=True,           # Set to true if you want to use ARD for the GP kernel
+            max_cholesky_size=2000, # When we switch from Cholesky to Lanczos
+            n_training_steps=50,    # Number of steps of ADAM to learn the hypers
+            min_cuda=1024,          #  Run on the CPU for small datasets
+            device="cpu",           # "cpu" or "cuda"
+            dtype="float32",        # float64 or float32
+            # X_init = X_init,
+        )
+    
+        turbo1.optimize()
+        proposed_X, fX = turbo1.X, turbo1.fX
+
+        fX = fX*-1
+    
+        return proposed_X, fX
         
     
             

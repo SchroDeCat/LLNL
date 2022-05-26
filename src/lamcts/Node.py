@@ -13,11 +13,12 @@ class Node:
     obj_counter   = 0
     # If a leave holds >= SPLIT_THRESH, we split into two new nodes.
     
-    def __init__(self, parent = None, dims = 0, reset_id = False, kernel_type = "rbf", gamma_type = "auto"):
+    def __init__(self, parent = None, dims = 0, reset_id = False, kernel_type = "rbf", gamma_type = "auto", verbose=False):
         # Note: every node is initialized as a leaf,
         # only internal nodes equip with classifiers to make decisions
         # if not is_root:
         #     assert type( parent ) == type( self )
+        self.verbose       = verbose
         self.dims          = dims
         self.x_bar         = float('inf')
         self.n             = 0
@@ -64,12 +65,13 @@ class Node:
         self.n += 1
         
     def print_bag(self):
-        sorted_bag = sorted(self.bag.items(), key=operator.itemgetter(1))
-        print("BAG"+"#"*10)
-        for item in sorted_bag:
-            print(item[0],"==>", item[1])            
-        print("BAG"+"#"*10)
-        print('\n')
+        if self.verbose:
+            sorted_bag = sorted(self.bag.items(), key=operator.itemgetter(1))
+            print("BAG"+"#"*10)
+            for item in sorted_bag:
+                print(item[0],"==>", item[1])            
+            print("BAG"+"#"*10)
+            print('\n')
         
     def update_bag(self, samples):
         assert len(samples) > 0

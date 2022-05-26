@@ -16,6 +16,7 @@ import sys
 import pickle
 import os
 import random
+import tqdm
 from datetime import datetime
 from .Node import Node
 from .utils import latin_hypercube, from_unit_cube
@@ -25,7 +26,7 @@ import torch
 class MCTS:
     #############################################
 
-    def __init__(self, lb, ub, dims, ninits, func, Cp = 1, leaf_size = 20, kernel_type = "rbf", gamma_type = "auto"):
+    def __init__(self, lb, ub, dims, ninits, func, Cp = 1, leaf_size = 20, kernel_type = "rbf", gamma_type = "auto", solver_type = "bo", verbose=True):
         self.dims                    =  dims
         self.samples                 =  []
         self.nodes                   =  []
@@ -39,17 +40,18 @@ class MCTS:
         self.best_value_trace        =  []
         self.sample_counter          =  0
         self.visualization           =  False
+        self.verbose                 =  verbose
         
         self.LEAF_SAMPLE_SIZE        =  leaf_size
         self.kernel_type             =  kernel_type
         self.gamma_type              =  gamma_type
         
-        self.solver_type             = 'bo' #solver can be 'bo' or 'turbo'
+        self.solver_type             = solver_type #solver can be 'bo' or 'turbo'
         
-        print("gamma_type:", gamma_type)
+        # print("gamma_type:", gamma_type)
         
         #we start the most basic form of the tree, 3 nodes and height = 1
-        root = Node( parent = None, dims = self.dims, reset_id = True, kernel_type = self.kernel_type, gamma_type = self.gamma_type )
+        root = Node( parent = None, dims = self.dims, reset_id = True, kernel_type = self.kernel_type, gamma_type = self.gamma_type, verbose=self.verbose )
         self.nodes.append( root )
         
         self.ROOT = root
@@ -62,7 +64,7 @@ class MCTS:
         for node in self.nodes:
             node.clear_data()
         self.nodes.clear()
-        new_root  = Node(parent = None,   dims = self.dims, reset_id = True, kernel_type = self.kernel_type, gamma_type = self.gamma_type )
+        new_root  = Node(parent = None,   dims = self.dims, reset_id = True, kernel_type = self.kernel_type, gamma_type = self.gamma_type, verbose=self.verbose )
         self.nodes.append( new_root )
         
         self.ROOT = new_root
@@ -110,8 +112,8 @@ class MCTS:
                 assert len(good_kid_data) + len(bad_kid_data) == len(parent.bag)
                 assert len(good_kid_data) > 0
                 assert len(bad_kid_data)  > 0
-                good_kid = Node(parent = parent, dims = self.dims, reset_id = False, kernel_type = self.kernel_type, gamma_type = self.gamma_type )
-                bad_kid  = Node(parent = parent, dims = self.dims, reset_id = False, kernel_type = self.kernel_type, gamma_type = self.gamma_type )
+                good_kid = Node(parent = parent, dims = self.dims, reset_id = False, kernel_type = self.kernel_type, gamma_type = self.gamma_type, verbose=self.verbose )
+                bad_kid  = Node(parent = parent, dims = self.dims, reset_id = False, kernel_type = self.kernel_type, gamma_type = self.gamma_type, verbose=self.verbose )
                 good_kid.update_bag( good_kid_data )
                 bad_kid.update_bag(  bad_kid_data  )
             
@@ -121,14 +123,14 @@ class MCTS:
                 self.nodes.append(bad_kid)
                 
             #print("continue split:", self.is_splitable())
-        
-        self.print_tree()
+        if self.verbose:
+            self.print_tree()
         
     def collect_samples(self, sample, value = None):
         #TODO: to perform some checks here
         if value == None:
             value = self.func(sample)*-1
-            
+        # print(sample, value)
         if value > self.curt_best_value:
             self.curt_best_value  = value
             self.curt_best_sample = sample 
@@ -144,21 +146,24 @@ class MCTS:
         init_points = from_unit_cube(init_points, self.lb, self.ub)
         
         for point in init_points:
+            # print(init_points.shape, point.shape)
             self.collect_samples(point)
         
-        print("="*10 + 'collect '+ str(len(self.samples) ) +' points for initializing MCTS'+"="*10)
-        print("lb:", self.lb)
-        print("ub:", self.ub)
-        print("Cp:", self.Cp)
-        print("inits:", self.ninits)
-        print("dims:", self.dims)
-        print("="*58)
-        
+        if self.verbose:
+            print("="*10 + 'collect '+ str(len(self.samples) ) +' points for initializing MCTS'+"="*10)
+            print("lb:", self.lb)
+            print("ub:", self.ub)
+            print("Cp:", self.Cp)
+            print("inits:", self.ninits)
+            print("dims:", self.dims)
+            print("="*58)
+            
     def print_tree(self):
-        print('-'*100)
-        for node in self.nodes:
-            print(node)
-        print('-'*100)
+        if self.verbose:
+            print('-'*100)
+            for node in self.nodes:
+                print(node)
+            print('-'*100)
 
     def reset_to_root(self):
         self.CURT = self.ROOT
@@ -202,8 +207,10 @@ class MCTS:
             curt_node = curt_node.kids[choice]
             if curt_node.is_leaf() == False and self.visualization == True:
                 curt_node.plot_samples_and_boundary(self.func)
-            print("=>", curt_node.get_name(), end=' ' )
-        print("")
+            if self.verbose:
+                print("=>", curt_node.get_name(), end=' ' )
+        if self.verbose:
+            print("")
         return curt_node, path
 
     def select(self):
@@ -218,8 +225,10 @@ class MCTS:
             choice = np.random.choice(np.argwhere(UCT == np.amax(UCT)).reshape(-1), 1)[0]
             path.append( (curt_node, choice) )
             curt_node = curt_node.kids[choice]
-            print("=>", curt_node.get_name(), end=' ' )
-        print("")
+            if self.verbose:
+                print("=>", curt_node.get_name(), end=' ' )
+        if self.verbose:
+            print("")
         return curt_node, path
     
     def backpropogate(self, leaf, acc):
@@ -231,33 +240,42 @@ class MCTS:
             curt_node       = curt_node.parent
 
     def search(self, iterations):
-        for idx in range(self.sample_counter, iterations):
-            print("")
-            print("="*10)
-            print("iteration:", idx)
-            print("="*10)
+        # iterator = tqdm.tqdm(range(self.sample_counter, iterations)) if self.verbose else range(self.sample_counter, iterations)
+        iterator = tqdm.tqdm(range(self.sample_counter, iterations))
+        for idx in iterator:
+            if self.verbose:
+                print("")
+                print("="*10)
+                print("iteration:", idx)
+                print("="*10)
             self.dynamic_treeify()
             leaf, path = self.select()
             for i in range(0, 1):
                 if self.solver_type == 'bo':
                     samples = leaf.propose_samples_bo( 1, path, self.lb, self.ub, self.samples )
                 elif self.solver_type == 'turbo':
-                    samples, values = leaf.propose_samples_turbo( 10000, path, self.func )
+                    # samples, values = leaf.propose_samples_turbo( 10000, path, self.func )
+                    samples, values = leaf.propose_samples_turbo(1, path, self.func )
                 else:
                     raise Exception("solver not implemented")
                 for idx in range(0, len(samples)):
                     if self.solver_type == 'bo':
                         value = self.collect_samples( samples[idx])
                     elif self.solver_type == 'turbo':
+                        # print(samples[idx].shape, values[idx].shape)
                         value = self.collect_samples( samples[idx], values[idx] )
                     else:
                         raise Exception("solver not implemented")
                     
                     self.backpropogate( leaf, value )
-            print("total samples:", len(self.samples) )
-            print("current best f(x):", np.absolute(self.curt_best_value) )
-            # print("current best x:", np.around(self.curt_best_sample, decimals=1) )
-            print("current best x:", self.curt_best_sample )
+
+            if self.verbose:
+                print("total samples:", len(self.samples) )
+                print("current best f(x):", np.absolute(self.curt_best_value) )
+                # print("current best x:", np.around(self.curt_best_sample, decimals=1) )
+                print("current best x:", self.curt_best_sample )
+            
+            iterator.set_postfix({"current best f(x)": self.curt_best_value})
 
 
 
