@@ -190,7 +190,7 @@ if __name__ == "__main__":
         idx = idx + 1
 
     if cli_args.s:
-        np.save(f"{save_path}/lamcts-dkbo-{name}-R{n_repeat}-P{1}-T{n_iter}.npy", reg_record)
+        np.save(f"{save_path}/lamcts-{solver_type}-{name}-R{n_repeat}-P{1}-T{n_iter}.npy", reg_record)
         # opt.store_results(cli_args.subdir)
         pass
     if cli_args.p:
@@ -198,7 +198,7 @@ if __name__ == "__main__":
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/lamcts-dkbo-{name}-R{n_repeat}-P{1}-T{n_iter}"
+        _path = f"{save_path}/lamcts-{solver_type}-{name}-R{n_repeat}-P{1}-T{n_iter}"
         plt.savefig(f"{_path}.png")
         # opt.plot_results(cli_args.subdir)
         pass

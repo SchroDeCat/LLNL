@@ -21,7 +21,7 @@ from gpytorch.priors import HorseshoePrior
 
 from sklearn.preprocessing import StandardScaler
 from matplotlib import pyplot as plt
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,7 +49,7 @@ class TurboState:
         )
 
 class TuRBO():
-    def __init__(self, train_x, train_y, n_init:int=10, acqf="ts", batch_size = 5, verbose=True, num_restarts=2, raw_samples = 512, discrete=True,):
+    def __init__(self, train_x, train_y, n_init:int=10, acqf="ts", batch_size = 1, verbose=True, num_restarts=2, raw_samples = 512, discrete=True,):
         def obj_func(pts):
             diff = torch.abs(train_x[:, :pts.size(0)] - pts)
             index = torch.argmin(torch.sum(diff, dim=1))
@@ -80,19 +80,21 @@ class TuRBO():
                 MaternKernel(nu=2.5, ard_num_dims=self.dim, lengthscale_constraint=Interval(0.005, 4.0))
             )
         else:
-            self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                gpytorch.kernels.ScaleKernel(MaternKernel(nu=2.5, ard_num_dims=self.dim, 
-                                                          lengthscale_constraint=Interval(0.005, 4.0))),
-                num_dims=self.dim, grid_size=1000)
             # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-            #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+            #     gpytorch.kernels.ScaleKernel(MaternKernel(nu=2.5, ard_num_dims=self.dim, 
+            #                                               lengthscale_constraint=Interval(0.005, 4.0))),
             #     num_dims=self.dim, grid_size=1000)
+            self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+                num_dims=self.dim, grid_size=10)
             # self.covar_module = gpytorch.kernels.LinearKernel()
     
     def opt(self, max_iter:int=100):
         low_dim = False
+        # print(self.verbose)
         iterator = tqdm(range(max_iter)) if self.verbose else range(max_iter)
         for _ in iterator:
+            # print(f"i {i}")
             # if state.restart_triggered:  # Run until TuRBO converges
             #     break
             # Fit a GP model
