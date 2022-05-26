@@ -84,7 +84,8 @@ class DK_BO_AE():
 
     def query(self, n_iter:int=10, acq="ts", study_ucb=False, **kwargs):
         self.regret = np.zeros(n_iter)
-        iterator = tqdm.tqdm(range(n_iter))
+        if_tqdm = kwargs.get("if_tqdm", True)
+        iterator = tqdm.tqdm(range(n_iter)) if if_tqdm else range(n_iter)
         study_interval = kwargs.get("study_interval", 10)
         _path = kwargs.get("study_res_path", None)
         # _candidate_idx_list = np.hstack([np.arange(self.n_init), np.zeros(n_iter)])
@@ -123,7 +124,8 @@ class DK_BO_AE():
             self.regret[i] = self.maximum - torch.max(self.init_y)
             if self.regret[i] < 1e-10:
                 break
-            iterator.set_postfix(loss=self.regret[i])
+            if if_tqdm:
+                iterator.set_postfix(loss=self.regret[i])
         # print(f"observed range in DKBO-AE {self.init_y.min()} {self.init_y.max()} max val {self.maximum}")
         # print(f"observed range in DKBO-AE {self.train_y.min()} {self.train_y.max()} max val {self.maximum}")
         # print(f"observed range in DKBO-AE {self.train_y[self.observed].min()} {self.train_y[self.observed].max()} max val {self.maximum}")

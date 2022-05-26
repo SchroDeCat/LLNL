@@ -110,9 +110,13 @@ class Node:
             
     def get_parent_str(self):
         return self.parent.get_name()
-            
-    def propose_samples_bo(self, num_samples, path, lb, ub, samples):
-        proposed_X = self.classifier.propose_samples_bo(num_samples, path, lb, ub, samples)
+    
+    def propose_samples_dkbo(self, num_samples, path, samples, dataset, pretrained_nn, func):
+        proposed_X, fX = self.classifier.propose_samples_dkbo(num_samples=num_samples, path=path, samples=samples, dataset=dataset, pretrained_nn=pretrained_nn, func=func)
+        return proposed_X, fX
+
+    def propose_samples_bo(self, num_samples, path, lb, ub, samples, x=None):
+        proposed_X = self.classifier.propose_samples_bo(x, num_samples, path, lb, ub, samples)
         return proposed_X
         
     def propose_samples_turbo(self, num_samples, path, func):

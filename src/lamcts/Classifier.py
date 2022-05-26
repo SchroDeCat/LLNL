@@ -6,6 +6,7 @@
 import torch
 import json
 import numpy as np
+import warnings
 
 from sklearn.cluster import KMeans
 from scipy.stats import norm
@@ -21,6 +22,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 from ..turbo import Turbo1
+from ..opt import DK_BO_AE
 
 
 # the input will be samples!
@@ -302,8 +304,25 @@ class Classifier():
                 return self.propose_rand_samples( nums_samples, lb, ub )
             else:
                 return final_cands
-        
-    def propose_samples_bo( self, nums_samples = 10, path = None, lb = None, ub = None, samples = None):
+
+    def propose_samples_dkbo(self, dataset=None, path=None, num_samples:int=1, samples=None, pretrained_nn=None, func=None):
+        """dkbo subroutine"""
+        assert path is not None and len(path) >= 0
+        assert samples is not None and len(samples) > 0
+        x_tensor = torch.from_numpy(dataset[:,:-1]).float()
+        y_tensor = torch.from_numpy(-dataset[:,-1]).float()
+        # print([sample[1] for sample in samples])
+        init_x = torch.from_numpy(np.array([sample[0] for sample in samples])).float()
+        init_y = torch.from_numpy(np.array([sample[1] for sample in samples])).float().reshape([-1,1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-2,
+                                    n_init=len(samples),  train_iter=10, regularize=False, dynamic_weight=False, 
+                                    max=y_tensor.max(), pretrained_nn=pretrained_nn, verbose=False, init_x=init_x, init_y=init_y)
+            sim_dkbo.query(n_iter=num_samples, acq='ts', study_ucb=False, study_interval=10, study_res_path=None, if_tqdm=False)
+        return sim_dkbo.init_x[-num_samples:].tolist(), sim_dkbo.init_y[-num_samples:].tolist()
+
+    def propose_samples_bo( self, X = None, nums_samples = 10, path = None, lb = None, ub = None, samples = None):
         ''' Proposes the next sampling point by optimizing the acquisition function. 
         Args: acquisition: Acquisition function. X_sample: Sample locations (n x d). 
         Y_sample: Sample values (n x 1). gpr: A GaussianProcessRegressor fitted to samples. 
@@ -319,7 +338,8 @@ class Classifier():
         if len(path) == 0:
             return self.propose_rand_samples(nums_samples, lb, ub)
         
-        X    = self.propose_rand_samples_sobol(nums_rand_samples, path, lb, ub)
+        if X is None:
+            X    = self.propose_rand_samples_sobol(nums_rand_samples, path, lb, ub)
         # print("samples in the region:", len(X) )
         # self.plot_boundary(X)
         if len(X) == 0:
@@ -332,7 +352,7 @@ class Classifier():
         n = nums_samples
         if X_ei.shape[0] < n:
             n = X_ei.shape[0]
-        indices = np.argsort(X_ei)[-n:]
+        indices = np.argsort(X_ei)[-n:] # maximize here.
         proposed_X = X[indices]
         return proposed_X
         
@@ -366,7 +386,7 @@ class Classifier():
         turbo1.optimize()
         proposed_X, fX = turbo1.X, turbo1.fX
 
-        fX = fX*-1
+        fX = fX
     
         return proposed_X, fX
         
@@ -410,6 +430,8 @@ class Classifier():
         
     def learn_boundary(self, plabel):
         assert len(plabel) == len(self.X)
+        # print(np.unique(plabel))
+        assert np.unique(plabel).shape[0] > 1
         self.svm.fit(self.X, plabel)
         
     def learn_clusters(self):
@@ -450,7 +472,9 @@ class Classifier():
             return good_samples, bad_samples
         
         plabel = self.learn_clusters( )
+        assert np.unique(plabel).shape[0] > 1
         self.learn_boundary( plabel )
+
         
         for idx in range(0, len(plabel)):
             if plabel[idx] == 0:

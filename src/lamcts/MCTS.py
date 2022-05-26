@@ -26,7 +26,9 @@ import torch
 class MCTS:
     #############################################
 
-    def __init__(self, lb, ub, dims, ninits, func, Cp = 1, leaf_size = 20, kernel_type = "rbf", gamma_type = "auto", solver_type = "bo", verbose=True):
+    def __init__(self, lb, ub, dims, dataset, ninits, func, Cp = 1, leaf_size = 20, 
+            kernel_type = "rbf", gamma_type = "auto", solver_type = "bo", verbose=True, pretrained_nn=None):
+        self.pretrained_nn           =  pretrained_nn
         self.dims                    =  dims
         self.samples                 =  []
         self.nodes                   =  []
@@ -41,6 +43,7 @@ class MCTS:
         self.sample_counter          =  0
         self.visualization           =  False
         self.verbose                 =  verbose
+        self.dataset                 =  dataset
         
         self.LEAF_SAMPLE_SIZE        =  leaf_size
         self.kernel_type             =  kernel_type
@@ -142,8 +145,10 @@ class MCTS:
     def init_train(self):
         
         # here we use latin hyper space to generate init samples in the search space
-        init_points = latin_hypercube(self.ninits, self.dims)
-        init_points = from_unit_cube(init_points, self.lb, self.ub)
+        # init_points = latin_hypercube(self.ninits, self.dims)
+        # init_points = from_unit_cube(init_points, self.lb, self.ub)
+        init_points = self.dataset[:self.ninits,:-1]
+        # print(f"init max {self.dataset[:self.ninits,-1].max()} {min([self.func(pts) for pts in init_points])}")
         
         for point in init_points:
             # print(init_points.shape, point.shape)
@@ -252,10 +257,15 @@ class MCTS:
             leaf, path = self.select()
             for i in range(0, 1):
                 if self.solver_type == 'bo':
-                    samples = leaf.propose_samples_bo( 1, path, self.lb, self.ub, self.samples )
+                    # samples = leaf.propose_samples_bo( 1, path, self.lb, self.ub, self.samples, x=self.dataset[:,:-1] )
+                    samples = leaf.propose_samples_bo( 1, path, self.lb, self.ub, self.samples, x=None )
                 elif self.solver_type == 'turbo':
                     # samples, values = leaf.propose_samples_turbo( 10000, path, self.func )
                     samples, values = leaf.propose_samples_turbo(1, path, self.func )
+                elif self.solver_type == 'dkbo':
+                    samples, _ = leaf.propose_samples_dkbo(num_samples=1, path=path, dataset=self.dataset, 
+                                        samples=self.samples, pretrained_nn=self.pretrained_nn, func=self.func)
+                    
                 else:
                     raise Exception("solver not implemented")
                 for idx in range(0, len(samples)):
@@ -264,6 +274,8 @@ class MCTS:
                     elif self.solver_type == 'turbo':
                         # print(samples[idx].shape, values[idx].shape)
                         value = self.collect_samples( samples[idx], values[idx] )
+                    elif self.solver_type == "dkbo":
+                        value = self.collect_samples( samples[idx])
                     else:
                         raise Exception("solver not implemented")
                     
