@@ -151,7 +151,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
 
 def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
                    n_iter=40, filter_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, 
-                   plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION):
+                   plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION, _minimum_pick = 10):
     # print(ucb_strategy)
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
@@ -187,7 +187,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
             observed[:n_init] = 1
             init_x = x_tensor[:n_init]
             init_y = y_tensor[:n_init]
-            _dkl = DKL(init_x, init_y.squeeze(), n_iter=10, low_dim=True)
+            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=True)
             _dkl.train_model()
             _dkl.model.eval()
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
@@ -199,6 +199,12 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
             # each test instance
             for iter in range(0, n_iter, filter_interval):
                 ucb_filter = ucb >= lcb[observed==1].max() # filtering
+                _minimum_pick = 10
+                if sum(ucb_filter) <= _minimum_pick:
+                    _, indices = torch.topk(ucb, min(_minimum_pick, data_size))
+                    for idx in indices:
+                        ucb_filter[idx] = 1
+
                 observed_unfiltered = np.min([observed, ucb_filter.numpy()], axis=0)      # observed and not filtered outs
                 # observed_unfiltered[:n_init]=0
                 # print(f"observed unfiltered {observed_unfiltered.sum()}/data_size {data_size} unfiltered {ucb_filter.sum()} observed {observed.sum()}")
@@ -221,6 +227,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
                 _step_size = min(iter+filter_interval, n_iter)
                 reg_record[rep, iter:_step_size] = sim_dkbo.regret[-_step_size:]
                 ucb_filtered_idx = util_array[ucb_filter]
+                # print(f"UCB filter size {sum(ucb_filter)}")
                 # print(sim_dkbo.observed.sum(), np.sum(sim_dkbo.observed==1))
                 # print(ucb_filtered_idx[sim_dkbo.observed== 1].shape)
                 observed[ucb_filtered_idx[sim_dkbo.observed==1]] = 1
@@ -234,7 +241,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
                 # _debug = y_tensor[ucb_filtered_idx] - y_tensor[ucb_filter]
                 # print(f"debug {_debug.sum()} {_debug} {np.sum(sim_dkbo.observed==1 - sim_dkbo.observed)}")
                 # update ucb for filtering
-                _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze(), n_iter=10, low_dim=True)
+                _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
+                            n_iter=10, low_dim=True)
                 _dkl.train_model()
                 _dkl.model.eval()
                 with torch.no_grad(), gpytorch.settings.fast_pred_var():
