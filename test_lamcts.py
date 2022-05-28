@@ -64,8 +64,11 @@ if __name__ == "__main__":
         dataset = torch.load(cli_args.datadir).numpy()  # want to find the maximal
     elif cli_args.datadir.endswith(".npy"):
         dataset = np.load(cli_args.datadir)
-    data_dim = dataset.shape[1]-1
+    # ub = dataset.max(axis=0)
+    # lb = dataset.min(axis=0)
 
+    # dataset = dataset[:, ub>lb]
+    data_dim = dataset.shape[1]-1
     # original Objective
     ROBUST = True
     ScalerClass = RobustScaler if ROBUST else StandardScaler

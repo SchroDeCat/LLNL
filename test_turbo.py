@@ -42,6 +42,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("--subdir", nargs='?', default="./res", type=str, help="directory to store the scripts and results",)
     cli_parser.add_argument("--datadir", nargs='?', default="./data", type=str, help="directory of the test datasets")
     cli_parser.add_argument("-a",  action="store_true", default=False, help="flag of if retrain AE")
+    cli_parser.add_argument("-c",  action="store_true", default=False, help="flag of if continuous")
     cli_parser.add_argument("-v",  action="store_true", default=False, help="flag of if verbose")
     cli_parser.add_argument("-f",  action="store_true", default=False, help="flag of if using fixed seed")
     cli_parser.add_argument("-p",  action="store_true", default=False, help="flag of if plotting result")
@@ -68,6 +69,9 @@ if __name__ == "__main__":
         dataset = torch.load(cli_args.datadir)  # want to find the maximal
     elif cli_args.datadir.endswith(".npy"):
         dataset = torch.from_numpy(np.load(cli_args.datadir))
+    # ub = dataset.numpy().max(axis=0)
+    # lb = dataset.numpy().min(axis=0)
+    # dataset = torch.from_numpy(dataset.numpy()[:, ub>lb])
     data_dim = dataset.shape[1]-1
 
     # original Objective
@@ -88,12 +92,19 @@ if __name__ == "__main__":
     pretrained = not (cli_args.aedir == 'none')
 
     # pretrain AE
+    # print("Load AE")
     if pretrained and cli_args.a:
         ae = AE(scaled_input_tensor, lr=1e-3)
         ae.train_ae(epochs=100, batch_size=200, verbose=True)
         torch.save(ae.state_dict(), cli_args.aedir)
         if cli_args.v:
             print(f"pretrained ae stored in {cli_args.aedir}")
+    elif pretrained:
+        assert not (cli_args.aedir is None)
+        ae = AE(scaled_input_tensor, lr=1e-3)
+        ae.load_state_dict(torch.load(cli_args.aedir, map_location="cpu"))
+    else:
+        ae = None
 
     name = cli_args.name
     verbose = cli_args.v
@@ -101,13 +112,27 @@ if __name__ == "__main__":
     n_repeat = cli_args.run_times
     n_init = cli_args.init_num
     n_iter = cli_args.opt_horizon
+    discrete = not cli_args.c
     test_x, test_y = scaled_input_tensor, output_tensor
     batch_size = cli_args.batch_size
     reg_record = np.zeros([n_repeat, batch_size * n_iter + n_init])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for idx in range(n_repeat):
-            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=True, batch_size=batch_size)
+            print(f"Round {idx}")
+            if cli_args.f:
+                # print(n_init+n_repeat*n_iter)
+                # _seed = rep*n_iter + n_init
+                _seed = _random_seed_gen()[idx]
+                torch.manual_seed(_seed)
+                np.random.seed(_seed)
+                random.seed(_seed)
+                torch.cuda.manual_seed(_seed)
+                torch.backends.cudnn.benchmark = False
+                torch.backends.cudnn.deterministic = True
+
+
+            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, pretrained_nn=ae)
             t.opt(n_iter,)
             reg_record[idx] = t.regret.squeeze()
 
@@ -116,12 +141,12 @@ if __name__ == "__main__":
 
 
     if cli_args.s:
-        np.save(f"{save_path}/turbo-{name}-R{n_repeat}-T{n_iter}.npy", reg_record)
+        np.save(f"{save_path}/turbo{'-bo' if not discrete else ''}-{name}-R{n_repeat}-T{n_iter}.npy", reg_record)
 
     if cli_args.p:
         plt.plot(reg_record.mean(axis=0))
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/turbo-{name}-R{n_repeat}-T{n_iter}"
+        _path = f"{save_path}/turbo{'-bo' if not discrete else ''}-{name}-R{n_repeat}-T{n_iter}"
         plt.savefig(f"{_path}.png")
