@@ -61,6 +61,7 @@ class DK_BO_OLP():
         self.train_iter = train_iter
         self.pretrained_nn = pretrained_nn
 
+        # print(f"init_y_max {torch.max(torch.cat(self.init_y_list))}")
         for idx in range(num_GP):
             self.train_x_list.append(torch.from_numpy(ScalerClass().fit_transform(train_x[idx])).float())
             self.train_y_list.append(train_y[idx])
@@ -176,6 +177,8 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
         self.dkl_list = []
         self.train_iter = train_iter
         self.pretrained_nn = pretrained_nn
+
+        # print(f"init_y_max {torch.max(torch.cat(self.init_y_list))}")
 
         # init lists
         for idx in range(num_GP):

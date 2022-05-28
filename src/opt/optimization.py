@@ -149,7 +149,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         return reg_record
 
 
-def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
+def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2,
                    n_iter=40, filter_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, 
                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION, _minimum_pick = 10):
     # print(ucb_strategy)
@@ -198,7 +198,10 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
 
             # each test instance
             for iter in range(0, n_iter, filter_interval):
-                ucb_filter = ucb >= lcb[observed==1].max() # filtering
+                _mean = (ucb + lcb) / 2
+                _ucb = (ucb - lcb) * beta / 4 + _mean
+                _lcb = (lcb - ucb) * beta / 4 + _mean
+                ucb_filter = _ucb >= _lcb[observed==1].max() # filtering
                 _minimum_pick = 10
                 if sum(ucb_filter) <= _minimum_pick:
                     _, indices = torch.topk(ucb, min(_minimum_pick, data_size))
@@ -271,13 +274,13 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10,
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/Filter-{name}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}"
+        _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}"
         plt.savefig(f"{_path}.png")
         # plt.show()
 
     if save_result:
         assert not (save_path is None)
-        save_res(save_path=save_path, name=name, res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"{name}-{beta}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", verbose=verbose,)
 
     if return_result:

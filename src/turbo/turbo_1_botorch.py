@@ -67,6 +67,7 @@ class TuRBO():
         self.Y_turbo = torch.tensor(
             [self.obj_func(x) for x in self.X_turbo], dtype=dtype, device=device
         ).unsqueeze(-1)
+        # print(f"init max {self.Y_turbo.max()}")
         self.batch_size = batch_size
         self.state = TurboState(self.dim, batch_size=batch_size)
         self.acqf = acqf
@@ -92,7 +93,6 @@ class TuRBO():
                 gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
                 num_dims=self.dim, grid_size=10)
             # self.covar_module = gpytorch.kernels.LinearKernel()
-   
     
     def opt(self, max_iter:int=100):
         low_dim = False
@@ -207,8 +207,7 @@ class TuRBO():
                 # )
                 iterator.set_postfix_str(f"({len(self.X_turbo)}) Regret: {self.maximum - self.state.best_value:.2e}, TR length: {self.state.length:.2e}")
             self.regret = self.maximum - np.maximum.accumulate(self.Y_turbo)
-            
-    
+              
     def update_state(self,):
         state=self.state
         Y_next=self.Y_next

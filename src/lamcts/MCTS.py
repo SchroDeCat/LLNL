@@ -148,6 +148,7 @@ class MCTS:
         # init_points = latin_hypercube(self.ninits, self.dims)
         # init_points = from_unit_cube(init_points, self.lb, self.ub)
         init_points = self.dataset[:self.ninits,:-1]
+        # init_values = [self.func(sample)*-1 for sample in init_points]
         # print(f"init max {self.dataset[:self.ninits,-1].max()} {min([self.func(pts) for pts in init_points])}")
         
         for point in init_points:

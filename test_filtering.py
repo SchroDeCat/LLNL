@@ -54,6 +54,7 @@ if __name__ == "__main__":
     # cli_parser.add_argument("--Lambda", nargs='?', default=0, type=int, help="neg rank of the lambda")
     # cli_parser.add_argument("--n_neighbor", nargs='?', default=50, type=int, help="number of neighbors used to regularize")
     cli_parser.add_argument("--init_num", nargs='?', default=10, type=int, help="number of initial random points")
+    cli_parser.add_argument("--beta", nargs='?', default=2, type=float, help="confidence factor")
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
@@ -100,9 +101,9 @@ if __name__ == "__main__":
             print(f"pretrained ae stored in {cli_args.aedir}")
 
 
-    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed}")
+    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta}")
     if cli_args.o:
-        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, 
+        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, beta=cli_args.beta,
                         n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
     else:
