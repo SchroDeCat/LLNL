@@ -8,7 +8,8 @@ sqrt_n = np.sqrt(n_repeat)
 RES_num = {}
 
 # RES_num["dkbo"] = np.load("OL-batched_nano-none-ts-R10-P1-T10_I1_L2-TI10-USexact.npy")
-RES_num["DKBO-ae"] = np.load("/Users/ttqsfzx/Documents/Research/LOCo/loco/LOCo/res/UAI2022-rebuttal/200d-ucb-i10-r5-h50-k50-lr0-rho1-f1-ae-fix.npy")
+# RES_num["DKBO-ae"] = np.load("/Users/ttqsfzx/Documents/Research/LOCo/loco/LOCo/res/UAI2022-rebuttal/200d-ucb-i10-r5-h50-k50-lr0-rho1-f1-ae-fix.npy")
+RES_num["DKBO-ae"] = np.load("../old-dataset/200d-ucb-i10-r5-h50-k50-lr0-rho1-f1-ae-fix.npy")
 RES_num[f"DKBO-OLP"] = np.load(f"../batch/OL-batched_hdbo200-B1-kmeans-y-ts-R10-P3-T30_I0_L2-TI10-USmax.npy")
 RES_num[f"DKBO-Filter"] = np.load(f"../filter/OL-filtering_hdbo200-none-ts-R10-P2-T30_I10_L2-TI10-USexact.npy")
 RES_num["LA-MCTS"] = np.load("../lamcts/lamcts-dkbo-hdbo200-R10-P1-T30.npy")
