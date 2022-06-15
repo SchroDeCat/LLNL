@@ -192,9 +192,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
             _dkl.model.eval()
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))
-                lcb, ucb = _observed_pred.confidence_region()
-            # print(f"pretrained {pretrained} ae {type(ae)}  n_iter {train_times}")
-            
+                lcb, ucb = _observed_pred.confidence_region()         
 
             # each test instance
             for iter in range(0, n_iter, filter_interval):
@@ -207,63 +205,47 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                     _, indices = torch.topk(ucb, min(_minimum_pick, data_size))
                     for idx in indices:
                         ucb_filter[idx] = 1
-
                 observed_unfiltered = np.min([observed, ucb_filter.numpy()], axis=0)      # observed and not filtered outs
-                # observed_unfiltered[:n_init]=0
-                # print(f"observed unfiltered {observed_unfiltered.sum()}/data_size {data_size} unfiltered {ucb_filter.sum()} observed {observed.sum()}")
-                # print(f"beginning init_y range {init_y.min(), init_y.max()}")
                 init_x = torch.cat([init_x, x_tensor[observed_unfiltered==1]])
                 init_y = torch.cat([init_y, y_tensor[observed_unfiltered==1]])
-                # print(f"init_y range {init_y.min(), init_y.max()}")
-                # print(f"observed unfiltered range {y_tensor[observed_unfiltered==1].min(), y_tensor[observed_unfiltered==1].max()}")
-                # print(f"unfiltered range {y_tensor[ucb_filter==1].min(), y_tensor[ucb_filter==1].max()} / truemax {max_val}")
-                # print(f"unfiltered range -2 {y_tensor[util_array[ucb_filter==1]].min(), y_tensor[util_array[ucb_filter==1]].max()} / truemax {max_val}")
-                # print(f"observed range {y_tensor[observed==1].min(), y_tensor[observed==1].max()}")
-                # print(f"verify ucb {ucb[ucb_filter==1].min(), ucb[ucb_filter==1].max()} > lcb {lcb[observed==1].max()}")
+
+                if study_partition:
+                    _path = f"{save_path}/Filter-{name}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}"
+                    fig = plt.figure()
+                    plt.scatter(y_tensor, ucb, c=ucb_filter, s=2, label="$\hat{X}$")
+                    plt.scatter(y_tensor[observed==1], ucb[observed==1], color='r', marker="*", s=5, label="Obs")
+                    plt.scatter(y_tensor[observed_unfiltered==1], ucb[observed_unfiltered==1], color='g', marker="+", s=25, label="unfiltered_Obs")
+                    plt.xlabel("Label")
+                    plt.ylabel("UCB")
+                    plt.colorbar()
+                    plt.legend()
+                    plt.title(f"{name} Iter {iter}")
+                    plt.savefig(f"{_path}-Iter{iter}.png")
+                    print(f"Fig stored to {_path}")
+
+
                 
                 sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr,
                                     n_init=n_init,  train_iter=train_times, regularize=False, dynamic_weight=False, 
                                     max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y)
                 query_num = min(filter_interval, n_iter-iter)
-                sim_dkbo.query(n_iter=query_num, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, study_res_path=save_path)
+                sim_dkbo.query(n_iter=query_num, acq=acq, study_ucb=False, study_interval=10, study_res_path=save_path)
                 # update records
                 _step_size = min(iter+filter_interval, n_iter)
                 reg_record[rep, iter:_step_size] = sim_dkbo.regret[-_step_size:]
                 ucb_filtered_idx = util_array[ucb_filter]
-                # print(f"UCB filter size {sum(ucb_filter)}")
-                # print(sim_dkbo.observed.sum(), np.sum(sim_dkbo.observed==1))
-                # print(ucb_filtered_idx[sim_dkbo.observed== 1].shape)
                 observed[ucb_filtered_idx[sim_dkbo.observed==1]] = 1
-                # print(f"{sim_dkbo.observed.shape} {observed.shape} {ucb_filtered_idx.shape} {y_tensor.size()}")
-                # print(f"post-opt observed range {y_tensor[observed].min(), y_tensor[observed].max()}")
-                # print(f"post-opt observed range {y_tensor[observed==1].min(), y_tensor[observed==1].max()}")
-                # print(f"post-opt observed range {y_tensor[ucb_filtered_idx][sim_dkbo.observed].min(), y_tensor[ucb_filtered_idx][sim_dkbo.observed].max()}")
-                # print(f"post-opt observed range {y_tensor[ucb_filtered_idx][sim_dkbo.observed==1].min(), y_tensor[ucb_filtered_idx][sim_dkbo.observed==1].max()}")
-                # print(f"post-opt observed range {y_tensor[ucb_filtered_idx[sim_dkbo.observed==1]].min(), y_tensor[ucb_filtered_idx[sim_dkbo.observed==1]].max()}")
-                # print(f"post-opt observed range {y_tensor[ucb_filter][sim_dkbo.observed].min(), y_tensor[ucb_filter][sim_dkbo.observed].max()}")
-                # _debug = y_tensor[ucb_filtered_idx] - y_tensor[ucb_filter]
-                # print(f"debug {_debug.sum()} {_debug} {np.sum(sim_dkbo.observed==1 - sim_dkbo.observed)}")
+
                 # update ucb for filtering
-                _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
+                _dkl = DKL(x_tensor[observed==1], y_tensor[observed==1].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
                             n_iter=10, low_dim=True)
+                # _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
+                            # n_iter=10, low_dim=True)
                 _dkl.train_model()
                 _dkl.model.eval()
                 with torch.no_grad(), gpytorch.settings.fast_pred_var():
                     _observed_pred = _dkl.likelihood(_dkl.model(x_tensor))
                     lcb, ucb = _observed_pred.confidence_region()
-
-                if study_partition:
-                    _path = f"{save_path}/Filter-{name}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}"
-                    # _file_path = _path(save_path=save_path, name=name, init_strategy=init_strategy, n_repeat=n_repeat, n_iter=n_iter, num_GP=num_GP, cluster_interval=cluster_interval,  acq=acq, train_iter=train_times)
-                    fig = plt.figure()
-                    plt.scatter(y_tensor, ucb, c=ucb_filter, s=2)
-                    plt.scatter(y_tensor[observed==1], ucb[observed==1], color='r', marker="*", s=5)
-                    plt.xlabel("Label")
-                    plt.ylabel("UCB")
-                    plt.colorbar()
-                    plt.title(f"{name} Iter {iter}")
-                    plt.savefig(f"{_path}-Iter{iter}.png")
-                    print(f"Fig stored to {_path}")
 
     for rep in range(n_repeat):
         reg_record[rep] = np.minimum.accumulate(reg_record[rep])
