@@ -13,6 +13,7 @@ import matplotlib as mpl
 import datetime
 import itertools
 
+from .sgld import SGLD
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -31,7 +32,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DKL():
 
-    def __init__(self, train_x, train_y, n_iter=2, lr=0.01, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False):
+    def __init__(self, train_x, train_y, n_iter=2, lr=0.01, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False, retrain_nn=True):
         self.training_iterations = n_iter
         self.lr = lr
         self.train_x = train_x
@@ -43,6 +44,7 @@ class DKL():
         self.cuda = torch.cuda.is_available()
         self.test_split = test_split
         self.output_scale = output_scale
+        self.retrain_nn = retrain_nn
         # self.cuda = False
         # split the dataset
         total_size = train_y.size(0)
@@ -72,9 +74,9 @@ class DKL():
                 if low_dim:
                     self.add_module('relu3', torch.nn.ReLU())
                     self.add_module('linear4', torch.nn.Linear(50, 1))
-                # else:
-                #     self.add_module('relu3', torch.nn.ReLU())
-                #     self.add_module('linear4', torch.nn.Linear(50, 10))
+                else:
+                    self.add_module('relu3', torch.nn.ReLU())
+                    self.add_module('linear4', torch.nn.Linear(50, 10))
 
         self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim)
         if not (pretrained_nn is None):
@@ -91,10 +93,11 @@ class DKL():
                     self.mean_module = gpytorch.means.ConstantMean()
                     if low_dim:
                         self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
+                            outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
                             num_dims=1, grid_size=100)
                     else:
-                        self.covar_module = gpytorch.kernels.LinearKernel()
+                        self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
 
                     # This module will scale the NN features so that they're nice values
                     self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
@@ -109,7 +112,8 @@ class DKL():
                     return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
     
         self.model = GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor)
-        self.model.covar_module.base_kernel.outputscale = self.output_scale
+        if low_dim:
+            self.model.covar_module.base_kernel.outputscale = self.output_scale
 
         if self.cuda:
             self.model = self.model.cuda()
@@ -129,12 +133,21 @@ class DKL():
             self._train_mae_record = np.zeros(self.training_iterations//record_interval)
 
         # Use the adam optimizer
-        self.optimizer = torch.optim.Adam([
-            {'params': self.model.feature_extractor.parameters()},
-            {'params': self.model.covar_module.parameters()},
-            {'params': self.model.mean_module.parameters()},
-            {'params': self.model.likelihood.parameters()},
-        ], lr=self.lr)
+        if self.retrain_nn:
+            params = [
+                {'params': self.model.feature_extractor.parameters()},
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        else:
+            params = [
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        # self.optimizer = torch.optim.Adam(params, lr=self.lr)
+        self.optimizer = SGLD(params, lr=self.lr)
 
         # "Loss" for GPs - the marginal log likelihood
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
@@ -233,6 +246,7 @@ class DKL():
         self.nll_record = torch.zeros(self.training_iterations)
 
         # Use the adam optimizer
+
         self.optimizer = torch.optim.Adam([
             {'params': self.model.feature_extractor.parameters()},
             {'params': self.model.covar_module.parameters()},

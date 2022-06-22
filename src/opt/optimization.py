@@ -149,8 +149,8 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         return reg_record
 
 
-def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2,
-                   n_iter=40, filter_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, 
+def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, regularize=False, low_dim=False,
+                   n_iter=40, filter_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, retrain_nn=True,
                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION, _minimum_pick = 10):
     # print(ucb_strategy)
     max_val = y_tensor.max()
@@ -158,6 +158,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
      # init dkl and generate ucb for partition
     data_size = x_tensor.size(0)
     util_array = np.arange(data_size)
+    if regularize:
+        name += "-reg"
 
     if pretrained:
         assert not (ae_loc is None)
@@ -187,8 +189,11 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
             observed[:n_init] = 1
             init_x = x_tensor[:n_init]
             init_y = y_tensor[:n_init]
-            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=True)
-            _dkl.train_model()
+            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr)
+            if regularize:
+                _dkl.train_model_kneighbor_collision()
+            else:
+                _dkl.train_model(verbose=verbose)
             _dkl.model.eval()
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))
@@ -210,7 +215,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 init_y = torch.cat([init_y, y_tensor[observed_unfiltered==1]])
 
                 if study_partition:
-                    _path = f"{save_path}/Filter-{name}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}"
+                    _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}"
                     fig = plt.figure()
                     plt.scatter(y_tensor, ucb, c=ucb_filter, s=2, label="$\hat{X}$")
                     plt.scatter(y_tensor[observed==1], ucb[observed==1], color='r', marker="*", s=5, label="Obs")
@@ -226,7 +231,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
 
                 
                 sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr,
-                                    n_init=n_init,  train_iter=train_times, regularize=False, dynamic_weight=False, 
+                                    n_init=n_init,  train_iter=train_times, regularize=regularize, dynamic_weight=False, 
                                     max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y)
                 query_num = min(filter_interval, n_iter-iter)
                 sim_dkbo.query(n_iter=query_num, acq=acq, study_ucb=False, study_interval=10, study_res_path=save_path)
@@ -237,11 +242,17 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 observed[ucb_filtered_idx[sim_dkbo.observed==1]] = 1
 
                 # update ucb for filtering
-                _dkl = DKL(x_tensor[observed==1], y_tensor[observed==1].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
-                            n_iter=10, low_dim=True)
+                # _ae = AE(x_tensor[ucb_filter], lr=1e-3)
+                # _ae.train_ae(epochs=train_times, batch_size=200, verbose=True)
+                _dkl = DKL(x_tensor[observed==1], y_tensor[observed==1].squeeze() if sum(observed) > 1 else y_tensor[observed==1],  
+                            n_iter=train_times, low_dim=low_dim, pretrained_nn=ae, retrain_nn=retrain_nn, lr=lr)
                 # _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
-                            # n_iter=10, low_dim=True)
-                _dkl.train_model()
+                            # n_iter=train_times, low_dim=True)
+                # 
+                if regularize:
+                    _dkl.train_model_kneighbor_collision()
+                else:
+                    _dkl.train_model(verbose=verbose)
                 _dkl.model.eval()
                 with torch.no_grad(), gpytorch.settings.fast_pred_var():
                     _observed_pred = _dkl.likelihood(_dkl.model(x_tensor))
@@ -252,6 +263,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
     reg_output_record = reg_record.mean(axis=0)
     
     if plot_result:
+        fig = plt.figure()
         plt.plot(reg_output_record)
         plt.ylabel("regret")
         plt.xlabel("Iteration")

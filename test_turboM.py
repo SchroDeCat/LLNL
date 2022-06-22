@@ -31,7 +31,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from src.models import AE
 from src.utils import save_res, _path, _random_seed_gen, Data_Factory
-from src.turbo import TurboM       
+from src.turbo import TurboM, Turbo1      
 
 if __name__ == "__main__":
     # parse the cli
@@ -152,18 +152,19 @@ if __name__ == "__main__":
                 torch.backends.cudnn.benchmark = False
                 torch.backends.cudnn.deterministic = True
 
-
             # minimize the negative function
-            turbo5 = TurboM(f=obj_func_simple_neg, lb=lb, ub=ub, n_init=cli_args.init_num,  verbose=cli_args.v,
-                            max_evals=cli_args.opt_horizon, n_trust_regions=cli_args.n_trust_region)
-            turbo5.optimize()  # Run optimization
-            X, fX = turbo5.X, -turbo5.fX  # Evaluated points
+            if cli_args.n_trust_region > 1:
+                turbo = TurboM(f=obj_func_simple_neg, lb=lb, ub=ub, n_init=cli_args.init_num,  verbose=cli_args.v,
+                                max_evals=cli_args.opt_horizon, n_trust_regions=cli_args.n_trust_region)
+                # turbo.optimize()  # Run optimization   
+            else:
+                turbo = Turbo1(f=obj_func_simple_neg, lb=lb, ub=ub, n_init=cli_args.init_num,  verbose=cli_args.v,
+                                max_evals=cli_args.opt_horizon,)
+            turbo.optimize()  # Run optimization
+            X, fX = turbo.X, -turbo.fX  # Evaluated points
             reg_record[idx] = np.minimum.accumulate(optima - fX).squeeze()
 
 
-            # t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, pretrained_nn=ae)
-            # t.opt(n_iter,)
-            # reg_record[idx] = t.regret.squeeze()
 
     if cli_args.p:
         plt.plot(reg_record.mean(axis=0))
