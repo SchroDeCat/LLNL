@@ -32,7 +32,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DKL():
 
-    def __init__(self, train_x, train_y, n_iter=2, lr=0.01, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False, retrain_nn=True):
+    def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False, retrain_nn=True):
         self.training_iterations = n_iter
         self.lr = lr
         self.train_x = train_x

@@ -43,7 +43,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("-a",  action="store_true", default=False, help="flag of if retrain AE")
     cli_parser.add_argument("-v",  action="store_true", default=False, help="flag of if verbose")
     cli_parser.add_argument("-f",  action="store_true", default=False, help="flag of if using fixed seed")
-    # cli_parser.add_argument("-r",  action="store_true", default=False, help="flag of if using regularization")
+    cli_parser.add_argument("-r",  action="store_true", default=False, help="flag of if using regularization")
     # cli_parser.add_argument("-d",  action="store_true", default=False, help="flag of if using dynamic weighting")
     cli_parser.add_argument("-p",  action="store_true", default=False, help="flag of if plotting result")
     cli_parser.add_argument("-s",  action="store_true", default=False, help="flag of if storing result")
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta}")
     if cli_args.o:
-        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, beta=cli_args.beta,
+        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, beta=cli_args.beta, regularize=cli_args.r,
                         n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
     else:
