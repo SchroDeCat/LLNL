@@ -51,6 +51,7 @@ class TurboState:
 class TuRBO():
     def __init__(self, train_x, train_y, n_init:int=10, acqf="ts", batch_size = 1, verbose=True, 
                     num_restarts=2, raw_samples = 512, discrete=True, pretrained_nn=None, train_iter=10, learning_rate=1e-2):
+                
         def obj_func(pts):
             diff = torch.abs(train_x[:, :pts.size(0)] - pts)
             index = torch.argmin(torch.sum(diff, dim=1))
@@ -58,6 +59,7 @@ class TuRBO():
         self.maximum = train_y.max()
         self.dim = train_x.size(1)
         self.training_iterations = train_iter
+        # print("train iter", self.training_iterations)
         self.lr = learning_rate
         self.obj_func = obj_func
         self.test_x = train_x if not discrete else train_x.float()
@@ -152,6 +154,7 @@ class TuRBO():
             # Do the fitting and acquisition function optimization inside the Cholesky context
             with gpytorch.settings.max_cholesky_size(max_cholesky_size):
                 # Fit the model
+                # print('discrete', self.discrete)
                 if not self.discrete:
                     fit_gpytorch_model(self.mll)
                 else:
@@ -181,6 +184,7 @@ class TuRBO():
                             iterator.set_postfix(loss=self.loss.item())
                     
                     # train(self.verbose)
+                    # print("verbose", self.verbose)
                     train(verbose=False)
                 # iterator.set_description(f'ML (loss={self.loss:.4})')
             
