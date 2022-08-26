@@ -32,7 +32,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DKL():
 
-    def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False, retrain_nn=True):
+    def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False, retrain_nn=True, spectrum_norm=False):
         self.training_iterations = n_iter
         self.lr = lr
         self.train_x = train_x
@@ -62,21 +62,27 @@ class DKL():
             self._x_train = self.train_x.clone()
             self._y_train = self.train_y.clone()
 
+        def add_spectrum_norm(module, normalize=spectrum_norm):
+            if normalize:
+                return torch.nn.utils.parametrizations.spectral_norm(module)
+            else:
+                return module
+
         class LargeFeatureExtractor(torch.nn.Sequential):
             def __init__(self, data_dim, low_dim):
                 super(LargeFeatureExtractor, self).__init__()
-                self.add_module('linear1', torch.nn.Linear(data_dim, 1000))
+                self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
                 self.add_module('relu1', torch.nn.ReLU())
-                self.add_module('linear2', torch.nn.Linear(1000, 500))
+                self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
                 self.add_module('relu2', torch.nn.ReLU())
-                self.add_module('linear3', torch.nn.Linear(500, 50))
+                self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
                 # test if using higher dimensions could be better
                 if low_dim:
                     self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4', torch.nn.Linear(50, 1))
+                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
                 else:
                     self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4', torch.nn.Linear(50, 10))
+                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
 
         self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim)
         if not (pretrained_nn is None):

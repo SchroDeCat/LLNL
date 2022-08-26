@@ -97,7 +97,7 @@ def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_ite
         pass
 
 
-def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True,
+def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
@@ -125,7 +125,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
             # no AE pretrain 
             if verbose:
                 print("DKBO")
-            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr,
+            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
                                 n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
                                 max=max_val, pretrained_nn=ae, verbose=verbose)
             sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, study_res_path=save_path)
@@ -142,17 +142,18 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
 
     if save_result:
         assert not (save_path is None)
-        save_res(save_path=save_path, name=name, res=reg_record, n_repeat=n_repeat, num_GP=1, n_iter=n_init, train_iter=train_iter,
+        save_res(save_path=save_path, name=name if low_dim else name+"-hd", res=reg_record, n_repeat=n_repeat, num_GP=1, n_iter=n_init, train_iter=train_iter,
                 init_strategy='none', cluster_interval=1, acq=acq, lr=lr, verbose=verbose,)
 
     if return_result:
         return reg_record
 
 
-def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, regularize=False, low_dim=False,
+def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, regularize=True, low_dim=True, spectrum_norm=False,
                    n_iter=40, filter_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, retrain_nn=True,
                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION, _minimum_pick = 10):
     # print(ucb_strategy)
+    name = name if low_dim else name+'-hd'
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
      # init dkl and generate ucb for partition
@@ -175,7 +176,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
             # set seed
             if fix_seed:
                 # print(n_init+n_repeat*n_iter)
-                _seed = rep * n_iter + n_init
+                # _seed = rep * n_iter + n_init
+                _seed = rep * 20 + n_init
                 # _seed = 70
                 torch.manual_seed(_seed)
                 np.random.seed(_seed)
@@ -189,7 +191,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
             observed[:n_init] = 1
             init_x = x_tensor[:n_init]
             init_y = y_tensor[:n_init]
-            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr)
+            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr, spectrum_norm=spectrum_norm)
             if regularize:
                 _dkl.train_model_kneighbor_collision()
             else:
@@ -206,10 +208,12 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 _lcb = (lcb - ucb) * beta / 4 + _mean
                 ucb_filter = _ucb >= _lcb[observed==1].max() # filtering
                 _minimum_pick = 10
-                if sum(ucb_filter) <= _minimum_pick:
-                    _, indices = torch.topk(ucb, min(_minimum_pick, data_size))
+                # print(f"ucb_filter sum {sum(ucb_filter[observed==1])}/{_minimum_pick}")
+                if sum(ucb_filter[observed==1]) <= _minimum_pick:
+                    _, indices = torch.topk(ucb[observed==1], min(_minimum_pick, data_size))
                     for idx in indices:
-                        ucb_filter[idx] = 1
+                        ucb_filter[util_array[[observed==1]][idx]] = 1
+                # print(f"Afterwards ucb_filter sum {sum(ucb_filter[observed==1])}/{_minimum_pick}")
                 observed_unfiltered = np.min([observed, ucb_filter.numpy()], axis=0)      # observed and not filtered outs
                 init_x = torch.cat([init_x, x_tensor[observed_unfiltered==1]])
                 init_y = torch.cat([init_y, y_tensor[observed_unfiltered==1]])
@@ -230,7 +234,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
 
 
                 
-                sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr,
+                sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr, spectrum_norm=spectrum_norm, low_dim=low_dim,
                                     n_init=n_init,  train_iter=train_times, regularize=regularize, dynamic_weight=False, 
                                     max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y)
                 query_num = min(filter_interval, n_iter-iter)
@@ -245,7 +249,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 # _ae = AE(x_tensor[ucb_filter], lr=1e-3)
                 # _ae.train_ae(epochs=train_times, batch_size=200, verbose=True)
                 _dkl = DKL(x_tensor[observed==1], y_tensor[observed==1].squeeze() if sum(observed) > 1 else y_tensor[observed==1],  
-                            n_iter=train_times, low_dim=low_dim, pretrained_nn=ae, retrain_nn=retrain_nn, lr=lr)
+                            n_iter=train_times, low_dim=low_dim, pretrained_nn=ae, retrain_nn=retrain_nn, lr=lr, spectrum_norm=spectrum_norm)
                 # _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
                             # n_iter=train_times, low_dim=True)
                 # 

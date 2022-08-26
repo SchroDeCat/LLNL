@@ -316,8 +316,11 @@ class Classifier():
         init_y = torch.from_numpy(np.array([sample[1] for sample in samples])).float().reshape([-1,1])
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-2,
-                                    n_init=len(samples),  train_iter=10, regularize=False, dynamic_weight=False, 
+            # sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-2,
+                                    # n_init=len(samples),  train_iter=10, regularize=False, dynamic_weight=False, 
+                                    # max=y_tensor.max(), pretrained_nn=pretrained_nn, verbose=False, init_x=init_x, init_y=init_y)
+            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-6,
+                                    n_init=len(samples),  train_iter=100, regularize=False, dynamic_weight=False, 
                                     max=y_tensor.max(), pretrained_nn=pretrained_nn, verbose=False, init_x=init_x, init_y=init_y)
             sim_dkbo.query(n_iter=num_samples, acq='ts', study_ucb=False, study_interval=10, study_res_path=None, if_tqdm=False)
         return sim_dkbo.init_x[-num_samples:].tolist(), sim_dkbo.init_y[-num_samples:].tolist()
