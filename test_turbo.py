@@ -53,7 +53,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("--init_num", nargs='?', default=10, type=int, help="number of initial random points")
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
-    # cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
+    cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
     cli_parser.add_argument("--batch-size", nargs="?", default=1, type=int,help="Batch size of each round of query")    
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
     # cli_parser.add_argument("--clustering", nargs='?', default="kmeans-y", type=str, help="cluster strategy")
@@ -132,7 +132,7 @@ if __name__ == "__main__":
                 torch.backends.cudnn.deterministic = True
 
 
-            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, pretrained_nn=ae)
+            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, train_iter=cli_args.train_times, pretrained_nn=ae)
             t.opt(n_iter,)
             reg_record[idx] = t.regret.squeeze()
 

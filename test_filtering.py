@@ -49,6 +49,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("-s",  action="store_true", default=False, help="flag of if storing result")
     cli_parser.add_argument("-n", action="store_true", default=False, help="flag of if negate the obj value to maximize")
     cli_parser.add_argument("-o", action="store_true", default=False, help="if filtering the space")
+    cli_parser.add_argument("--high_dim", action="store_true", default=False, help="if using high dim latent space")
     cli_parser.add_argument("--learning_rate", nargs='?', default=2, type=int, help="rank of the learning rate")
     # cli_parser.add_argument("--rho", nargs='?', default=4, type=int, help="neg rank of the rho")
     # cli_parser.add_argument("--Lambda", nargs='?', default=0, type=int, help="neg rank of the lambda")
@@ -58,6 +59,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
+
     # cli_parser.add_argument("--train_interval", nargs='?', default=1, type=int, help="retrain interval")
     
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
@@ -90,23 +92,24 @@ if __name__ == "__main__":
     fix_seed = cli_args.f
     lr_rank = -cli_args.learning_rate
     learning_rate = 10 ** lr_rank
+    low_dim = not cli_args.high_dim
     pretrained = not (cli_args.aedir is None)
 
     # pretrain AE
     if not (cli_args.aedir is None) and cli_args.a:
         ae = AE(scaled_input_tensor, lr=1e-3)
-        ae.train_ae(epochs=100, batch_size=200, verbose=True)
+        ae.train_ae(epochs=10, batch_size=200, verbose=True)
         torch.save(ae.state_dict(), cli_args.aedir)
         if cli_args.v:
             print(f"pretrained ae stored in {cli_args.aedir}")
 
 
-    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta}")
+    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim}")
     if cli_args.o:
-        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, beta=cli_args.beta, regularize=cli_args.r,
+        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta, regularize=cli_args.r,
                         n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
     else:
-        pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, 
+        pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim,
                         n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_iter=cli_args.train_times,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir,)
