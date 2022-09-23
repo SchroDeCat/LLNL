@@ -370,26 +370,89 @@ class DKL():
                 raise NotImplementedError(f"sampling method {method} not implemented")
             self.acq_val = samples
 
-        elif acq.lower() == "ucb":
+        elif acq.lower() in ["ucb", 'ci', 'lcb']:
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
-            self.acq_val = upper
-        elif acq.lower() == 'ci':
-            with torch.no_grad(), gpytorch.settings.fast_pred_var():
-                observed_pred = self.likelihood(self.model(test_x))
-                lower, upper = observed_pred.confidence_region()
-            self.acq_val = upper - lower
-        elif acq.lower() == 'lcb':
-            with torch.no_grad(), gpytorch.settings.fast_pred_var():
-                observed_pred = self.likelihood(self.model(test_x))
-                lower, upper = observed_pred.confidence_region()
-            self.acq_val = -lower            
+            if acq.lower() == 'ucb':
+                self.acq_val = upper
+            elif acq.lower() == 'ci':
+                self.acq_val = upper - lower
+            elif acq.lower() == 'lcb':
+                self.acq_val = -lower            
         else:
             raise NotImplementedError(f"acq {acq} not implemented")
 
         max_pts = torch.argmax(self.acq_val)
         candidate = test_x[max_pts]
+        if return_idx:
+            return max_pts
+        else:
+            return candidate
+
+    def CI(self, test_x,):
+        """
+        Return LCB and UCB
+        """
+
+        # clear cache
+        self.model.train()
+        self.likelihood.train()
+
+        # Set into eval mode
+        self.model.eval()
+        self.likelihood.eval()
+
+        if self.cuda:
+          test_x = test_x.cuda()
+
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            observed_pred = self.likelihood(self.model(test_x))
+            lower, upper = observed_pred.confidence_region()
+        
+        return lower, upper
+
+
+    def intersect_CI_next_point(self, test_x, max_test_x_lcb, min_test_x_ucb, acq="ci",return_idx=False):
+        """
+        Maximize acquisition function to find next point to query in the intersection of historical CI
+        """
+
+        # clear cache
+        self.model.train()
+        self.likelihood.train()
+
+        # Set into eval mode
+        self.model.eval()
+        self.likelihood.eval()
+
+        if self.cuda:
+          test_x = test_x.cuda()
+
+        if acq.lower() in ["ucb", 'ci', 'lcb']:
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                observed_pred = self.likelihood(self.model(test_x))
+                lower, upper = observed_pred.confidence_region()
+                # intersection
+                assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
+                lower = torch.max([lower.to("cpu"), max_test_x_lcb.to("cpu")])
+                upper = torch.min([upper.to("cpu"), min_test_x_ucb.to("cpu")])
+                
+            if acq.lower() == 'ucb':
+                self.acq_val = upper
+            elif acq.lower() == 'ci':
+                self.acq_val = upper - lower
+            elif acq.lower() == 'lcb':
+                self.acq_val = -lower              
+        else:
+            raise NotImplementedError(f"acq {acq} not implemented")
+
+        max_pts = torch.argmax(self.acq_val)
+        candidate = test_x[max_pts]
+
+        # Store the intersection
+        self.max_test_x_lcb, self.min_test_x_ucb = lower, upper
+
         if return_idx:
             return max_pts
         else:
