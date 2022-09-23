@@ -375,6 +375,16 @@ class DKL():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
             self.acq_val = upper
+        elif acq.lower() == 'ci':
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                observed_pred = self.likelihood(self.model(test_x))
+                lower, upper = observed_pred.confidence_region()
+            self.acq_val = upper - lower
+        elif acq.lower() == 'lcb':
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                observed_pred = self.likelihood(self.model(test_x))
+                lower, upper = observed_pred.confidence_region()
+            self.acq_val = -lower            
         else:
             raise NotImplementedError(f"acq {acq} not implemented")
 
