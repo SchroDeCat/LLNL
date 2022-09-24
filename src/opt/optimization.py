@@ -201,7 +201,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
             #     _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))
             #     lcb, ucb = _observed_pred.confidence_region()
             lcb, ucb = _dkl.CI(x_tensor.to(DEVICE))
-            max_test_x_lcb, min_test_x_ucb = lcb, ucb
+            max_test_x_lcb, min_test_x_ucb = lcb.clone(), ucb.clone()
+            # print(max_test_x_lcb is lcb)
 
 
             # each test instance

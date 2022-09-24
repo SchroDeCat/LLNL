@@ -435,8 +435,10 @@ class DKL():
                 lower, upper = observed_pred.confidence_region()
                 # intersection
                 assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
-                lower = torch.max([lower.to("cpu"), max_test_x_lcb.to("cpu")])
-                upper = torch.min([upper.to("cpu"), min_test_x_ucb.to("cpu")])
+                # print(lower, max_test_x_lcb)
+                lower = torch.max(lower.to("cpu"), max_test_x_lcb.to("cpu"))
+                upper = torch.min(upper.to("cpu"), min_test_x_ucb.to("cpu"))
+                assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
                 
             if acq.lower() == 'ucb':
                 self.acq_val = upper

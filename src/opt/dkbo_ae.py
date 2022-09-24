@@ -91,14 +91,19 @@ class DK_BO_AE():
         study_interval = kwargs.get("study_interval", 10)
         _path = kwargs.get("study_res_path", None)
         ci_intersection = kwargs.get("ci_intersection", False)
-        if ci_intersection:
-            max_test_x_lcb = kwargs.get("max_test_x_lcb", None)
-            min_test_x_ucb = kwargs.get("min_test_x_ucb", None)
+        max_test_x_lcb = kwargs.get("max_test_x_lcb", None)
+        min_test_x_ucb = kwargs.get("min_test_x_ucb", None)
         assert not( max_test_x_lcb is None or min_test_x_ucb is None)
         # _candidate_idx_list = np.hstack([np.arange(self.n_init), np.zeros(n_iter)])
         _candidate_idx_list = np.zeros(n_iter)
         for i in iterator:
-            candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True)
+            # ci_intersection = False # for debug
+            if ci_intersection:
+                # assert acq.lower() in ['ci','ucb','lcb']
+                candidate_idx = self.dkl.intersect_CI_next_point(self.train_x, 
+                    max_test_x_lcb=max_test_x_lcb, min_test_x_ucb=min_test_x_ucb, acq=acq, return_idx=True)
+            else:
+                candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True)
             _candidate_idx_list[i] = candidate_idx
             # print(self.init_x.size(),  self.train_x[candidate_idx].size())
             self.init_x = torch.cat([self.init_x, self.train_x[candidate_idx].reshape(1,-1)], dim=0)
