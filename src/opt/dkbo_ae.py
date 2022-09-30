@@ -36,13 +36,14 @@ class DK_BO_AE():
     """
     def __init__(self, train_x, train_y, n_init:int=10, lr=1e-6, train_iter:int=10, regularize=True, spectrum_norm=False,
                 dynamic_weight=False, verbose=False, max=None, robust_scaling=True, pretrained_nn=None, low_dim=True,
-                record_loss=False, **kwargs):
+                record_loss=False, retrain_nn=True, **kwargs):
         # scale input
         ScalerClass = RobustScaler if robust_scaling else StandardScaler
         self.scaler = ScalerClass().fit(train_x)
         train_x = self.scaler.transform(train_x)
         # init vars
         self.regularize = regularize
+        self.lr = lr
         self.low_dim = low_dim
         self.verbose = verbose
         self.n_init = n_init
@@ -52,6 +53,7 @@ class DK_BO_AE():
         self.train_x = torch.from_numpy(train_x).float()
         self.train_y = train_y
         self.train_iter = train_iter
+        self.retrain_nn = retrain_nn
         self.maximum = torch.max(self.train_y) if max==None else max
         self.init_x = kwargs.get("init_x", self.train_x[:n_init])
         self.init_y = kwargs.get("init_y", self.train_y[:n_init])
@@ -60,9 +62,11 @@ class DK_BO_AE():
         self.observed = np.zeros(self.train_x.size(0)).astype("int")
         # self.observed[:n_init] = True
         self.pretrained_nn = pretrained_nn
-        self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=self.pretrained_nn, spectrum_norm=spectrum_norm)
+        self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, pretrained_nn=self.pretrained_nn, retrain_nn=retrain_nn, spectrum_norm=spectrum_norm)
+
+        # print("ROI GP: ", self.init_y.size(), f"n_iter={train_iter}, low_dim={low_dim}, retrain_nn={self.dkl.retrain_nn} lr={lr}{self.dkl.lr}, spectrum_norm={spectrum_norm} regularize {regularize}")
         self.record_loss = record_loss
-        self.lr = lr
+
         if self.record_loss:
             assert not (pretrained_nn is None)
             self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=spectrum_norm)
@@ -80,28 +84,32 @@ class DK_BO_AE():
                 self._pure_dkl.train_model(record_mae=True)
                 self.dkl.train_model(record_mae=True)
             else:
-                self.dkl.train_model()
+                # print(self.verbose)
+                # self.dkl.train_model(verbose=self.verbose)
+                self.dkl.train_model(verbose=False)
 
         
 
     def query(self, n_iter:int=10, acq="ts", study_ucb=False, **kwargs):
         self.regret = np.zeros(n_iter)
-        if_tqdm = kwargs.get("if_tqdm", True)
+        if_tqdm = kwargs.get("if_tqdm", False)
         iterator = tqdm.tqdm(range(n_iter)) if if_tqdm else range(n_iter)
         study_interval = kwargs.get("study_interval", 10)
         _path = kwargs.get("study_res_path", None)
         ci_intersection = kwargs.get("ci_intersection", False)
         max_test_x_lcb = kwargs.get("max_test_x_lcb", None)
         min_test_x_ucb = kwargs.get("min_test_x_ucb", None)
-        assert not( max_test_x_lcb is None or min_test_x_ucb is None)
+        _roi_beta = kwargs.get("_roi_beta", 1)
+        
         # _candidate_idx_list = np.hstack([np.arange(self.n_init), np.zeros(n_iter)])
         _candidate_idx_list = np.zeros(n_iter)
         for i in iterator:
             # ci_intersection = False # for debug
             if ci_intersection:
+                assert not( max_test_x_lcb is None or min_test_x_ucb is None)
                 # assert acq.lower() in ['ci','ucb','lcb']
                 candidate_idx = self.dkl.intersect_CI_next_point(self.train_x, 
-                    max_test_x_lcb=max_test_x_lcb, min_test_x_ucb=min_test_x_ucb, acq=acq, return_idx=True)
+                    max_test_x_lcb=max_test_x_lcb, min_test_x_ucb=min_test_x_ucb, acq=acq, beta=_roi_beta, return_idx=True)
             else:
                 candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True)
             _candidate_idx_list[i] = candidate_idx
@@ -120,10 +128,11 @@ class DK_BO_AE():
                 plt.ylabel(acq)
                 plt.colorbar()
                 plt.title(f"Iter {i}")
-                plt.savefig(f"{_path}/pure_dkbo_Iter{i}.png")
+                plt.savefig(f"{_path}/pure_dkbo_Scaling{self.dkl.model.covar_module.base_kernel.outputscale}_Iter{i}.png")
 
             # retrain
-            self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=True, pretrained_nn=self.pretrained_nn, spectrum_norm=self.spectrum_norm)
+            self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=True, pretrained_nn=self.pretrained_nn, retrain_nn=self.retrain_nn,
+                                 spectrum_norm=self.spectrum_norm)
             if self.record_loss:
                 self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=True, pretrained_nn=None, lr=self.lr, spectrum_norm=self.spectrum_norm)
             # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)

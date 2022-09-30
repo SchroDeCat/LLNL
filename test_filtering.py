@@ -64,7 +64,8 @@ if __name__ == "__main__":
     
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
     cli_parser.add_argument("--filter_interval", nargs='?', default=10, type=int, help="filtering interval")
-    cli_parser.add_argument("--intersection", action="store_false", default=True, help="number of partition")
+    cli_parser.add_argument("--intersection", action="store_false", default=True, help="if using CI's intersection")
+    cli_parser.add_argument("--return_model", action="store_true", default=False, help="if returning models")
     
     
     cli_args = cli_parser.parse_args()
@@ -99,18 +100,40 @@ if __name__ == "__main__":
     # pretrain AE
     if not (cli_args.aedir is None) and cli_args.a:
         ae = AE(scaled_input_tensor, lr=1e-3)
+        # print(scaled_input_tensor.shape)
         ae.train_ae(epochs=10, batch_size=200, verbose=True)
         torch.save(ae.state_dict(), cli_args.aedir)
         if cli_args.v:
             print(f"pretrained ae stored in {cli_args.aedir}")
 
 
-    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim} CI intersection {cli_args.intersection}")
+    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim} CI intersection {cli_args.intersection} verbose={verbose}")
     if cli_args.o:
-        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta, regularize=cli_args.r,   ci_intersection=cli_args.intersection,
+        res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta, regularize=cli_args.r,   ci_intersection=cli_args.intersection,
                         n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
-                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
+                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=not cli_args.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
     else:
         pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim,
                         n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_iter=cli_args.train_times,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir,)
+
+
+    if cli_args.return_model:
+        if cli_args.o:
+            dk, sim_dk_ae = res
+            dk_upper, dk_lower = dk.CI(scaled_input_tensor)
+            dk_mean = (dk_upper + dk_lower)/2
+            roi_upper, roi_lower = sim_dk_ae.dkl.CI(scaled_input_tensor)
+            roi_mean = (roi_upper + roi_lower )/2
+            print(scaled_input_tensor[:,0].shape, torch.unique(scaled_input_tensor[:,0]).shape)
+            plt.figure()
+            plt.scatter(scaled_input_tensor[:,0], dk_upper, s=2, label="Global UCB")
+            plt.scatter(scaled_input_tensor[:,0], dk_lower,  s=2,label="Global LCB")
+            plt.scatter(scaled_input_tensor[:,0], scaled_input_tensor[:,-1], s=2, label="Objective")
+            plt.scatter(scaled_input_tensor[:,0], dk_mean, s=2, label="Global Predicted Mean")
+            plt.scatter(scaled_input_tensor[:,0], roi_upper,  s=2, label="ROI UCB")
+            plt.scatter(scaled_input_tensor[:,0], roi_lower,  s=2, label="ROI LCB")
+            plt.scatter(scaled_input_tensor[:,0], roi_mean, s=2, label="ROI Predicted Mean")
+            plt.legend()
+            plt.show()
+            plt.savefig(f"1DEG-lr{learning_rate}-beta{cli_args.beta}-train{cli_args.train_times}.png")

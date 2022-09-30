@@ -129,6 +129,7 @@ class DKL():
     
     def train_model(self, loss_type="nll", verbose=False, **kwargs):
         # Find optimal model hyperparameters
+        # print(verbose)
         self.model.train()
         self.likelihood.train()
         record_mae = kwargs.get("record_mae", False) 
@@ -413,7 +414,7 @@ class DKL():
         return lower, upper
 
 
-    def intersect_CI_next_point(self, test_x, max_test_x_lcb, min_test_x_ucb, acq="ci",return_idx=False):
+    def intersect_CI_next_point(self, test_x, max_test_x_lcb, min_test_x_ucb, acq="ci", beta=2, return_idx=False):
         """
         Maximize acquisition function to find next point to query in the intersection of historical CI
         """
@@ -429,17 +430,22 @@ class DKL():
         if self.cuda:
           test_x = test_x.cuda()
 
-        if acq.lower() in ["ucb", 'ci', 'lcb']:
+        if acq.lower() in ["ucb", 'ci', 'lcb', 'ucb-debug']:
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
                 # intersection
                 assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
-                # print(lower, max_test_x_lcb)
                 lower = torch.max(lower.to("cpu"), max_test_x_lcb.to("cpu"))
                 upper = torch.min(upper.to("cpu"), min_test_x_ucb.to("cpu"))
+                mean = (upper + lower)/2
+                sigma = mean - lower
+                upper = mean + sigma * beta
+                lower = mean - sigma * beta
                 assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
-                
+            if acq.lower() == 'ucb-debug':
+                self.acq_val = observed_pred.confidence_region()[1]
+
             if acq.lower() == 'ucb':
                 self.acq_val = upper
             elif acq.lower() == 'ci':
