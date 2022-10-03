@@ -36,6 +36,13 @@ def _random_seed_gen(size:int=100):
     np.random.seed(0)
     return np.random.choice(10000, size)
 
+
+def beta_CI(lcb, ucb, beta):
+    """Lower then upper"""
+    _ucb_scaled = (ucb - lcb) / 4 * (beta-2) + ucb
+    _lcb_scaled = (ucb - lcb) / 4 * (2-beta) + lcb
+    return _lcb_scaled, _ucb_scaled
+
 def _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter, ucb_strategy, ci_intersection):
     return f"{save_path}/OL-{name}-{init_strategy}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_iter}-US{ucb_strategy}{'-sec' if ci_intersection else ''}"
 

@@ -92,6 +92,7 @@ class DK_BO_AE():
 
     def query(self, n_iter:int=10, acq="ts", study_ucb=False, **kwargs):
         self.regret = np.zeros(n_iter)
+        self.interval = np.zeros(n_iter)
         if_tqdm = kwargs.get("if_tqdm", False)
         iterator = tqdm.tqdm(range(n_iter)) if if_tqdm else range(n_iter)
         study_interval = kwargs.get("study_interval", 10)
@@ -111,7 +112,7 @@ class DK_BO_AE():
                 candidate_idx = self.dkl.intersect_CI_next_point(self.train_x, 
                     max_test_x_lcb=max_test_x_lcb, min_test_x_ucb=min_test_x_ucb, acq=acq, beta=_roi_beta, return_idx=True)
             else:
-                candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True)
+                candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True, beta=_roi_beta,)
             _candidate_idx_list[i] = candidate_idx
             # print(self.init_x.size(),  self.train_x[candidate_idx].size())
             self.init_x = torch.cat([self.init_x, self.train_x[candidate_idx].reshape(1,-1)], dim=0)
@@ -141,12 +142,15 @@ class DK_BO_AE():
                 self.loss_record["DK-AE"].append(self.dkl.mae_record[-1])
                 self.loss_record["DK"].append(self._pure_dkl.mae_record[-1])
 
-            # regret
+            # regret & interval
             self.regret[i] = self.maximum - torch.max(self.init_y)
             if self.regret[i] < 1e-10:
                 break
             if if_tqdm:
                 iterator.set_postfix(loss=self.regret[i])
+
+            _lcb, _ucb = self.dkl.CI(self.train_x)
+            self.interval[i] = (_ucb.max() -_lcb.max()).numpy()
         # print(f"observed range in DKBO-AE {self.init_y.min()} {self.init_y.max()} max val {self.maximum}")
         # print(f"observed range in DKBO-AE {self.train_y.min()} {self.train_y.max()} max val {self.maximum}")
         # print(f"observed range in DKBO-AE {self.train_y[self.observed].min()} {self.train_y[self.observed].max()} max val {self.maximum}")

@@ -435,14 +435,13 @@ class DKL():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
                 # intersection
-                assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
-                lower = torch.max(lower.to("cpu"), max_test_x_lcb.to("cpu"))
-                upper = torch.min(upper.to("cpu"), min_test_x_ucb.to("cpu"))
                 mean = (upper + lower)/2
                 sigma = mean - lower
                 upper = mean + sigma * beta
                 lower = mean - sigma * beta
                 assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
+                lower = torch.max(lower.to("cpu"), max_test_x_lcb.to("cpu"))
+                upper = torch.min(upper.to("cpu"), min_test_x_ucb.to("cpu"))
             if acq.lower() == 'ucb-debug':
                 self.acq_val = observed_pred.confidence_region()[1]
 
