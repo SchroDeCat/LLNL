@@ -100,19 +100,24 @@ class DK_BO_AE():
         ci_intersection = kwargs.get("ci_intersection", False)
         max_test_x_lcb = kwargs.get("max_test_x_lcb", None)
         min_test_x_ucb = kwargs.get("min_test_x_ucb", None)
-        _roi_beta = kwargs.get("_roi_beta", 1)
-        
+        beta = kwargs.get("beta", 1)
+        _delta = kwargs.get("delta", .2)
+
+        real_beta = beta <= 0 # if using analytic beta
+        # print(beta, acq)
         # _candidate_idx_list = np.hstack([np.arange(self.n_init), np.zeros(n_iter)])
         _candidate_idx_list = np.zeros(n_iter)
         for i in iterator:
-            # ci_intersection = False # for debug
+            
+            if real_beta:
+                beta = (2 * np.log((self.train_x.shape[0] * (np.pi * (self.init_x.shape[0] + 1)) ** 2) /(6 * _delta))) ** 0.5
             if ci_intersection:
                 assert not( max_test_x_lcb is None or min_test_x_ucb is None)
                 # assert acq.lower() in ['ci','ucb','lcb']
                 candidate_idx = self.dkl.intersect_CI_next_point(self.train_x, 
-                    max_test_x_lcb=max_test_x_lcb, min_test_x_ucb=min_test_x_ucb, acq=acq, beta=_roi_beta, return_idx=True)
+                    max_test_x_lcb=max_test_x_lcb, min_test_x_ucb=min_test_x_ucb, acq=acq, beta=beta, return_idx=True)
             else:
-                candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True, beta=_roi_beta,)
+                candidate_idx = self.dkl.next_point(self.train_x, acq, "love", return_idx=True, beta=beta,)
             _candidate_idx_list[i] = candidate_idx
             # print(self.init_x.size(),  self.train_x[candidate_idx].size())
             self.init_x = torch.cat([self.init_x, self.train_x[candidate_idx].reshape(1,-1)], dim=0)
@@ -147,7 +152,7 @@ class DK_BO_AE():
             if self.regret[i] < 1e-10:
                 break
             if if_tqdm:
-                iterator.set_postfix(loss=self.regret[i])
+                iterator.set_postfix({"regret":self.regret[i], "Internal_beta": beta})
 
             _lcb, _ucb = self.dkl.CI(self.train_x)
             self.interval[i] = (_ucb.max() -_lcb.max()).numpy()

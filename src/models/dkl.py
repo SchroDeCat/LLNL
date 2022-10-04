@@ -13,6 +13,7 @@ import matplotlib as mpl
 import datetime
 import itertools
 
+# from src.utils import beta_CI
 from .sgld import SGLD
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
@@ -29,6 +30,13 @@ from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def beta_CI(lcb, ucb, beta):
+    """Lower then upper"""
+    _ucb_scaled = (ucb - lcb) / 4 * (beta-2) + ucb
+    _lcb_scaled = (ucb - lcb) / 4 * (2-beta) + lcb
+    return _lcb_scaled, _ucb_scaled
 
 class DKL():
 
@@ -68,6 +76,30 @@ class DKL():
             else:
                 return module
 
+        # class LargeFeatureExtractor(torch.nn.Sequential):
+        #     def __init__(self, data_dim, low_dim):
+        #         super(LargeFeatureExtractor, self).__init__()
+        #         self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
+        #         self.add_module('relu1', torch.nn.Sigmoid())
+        #         self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
+        #         self.add_module('relu2', torch.nn.Tanh())
+        #         self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 250)))
+        #         self.add_module('relu3', torch.nn.Sigmoid())
+        #         self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(250, 125)))
+        #         self.add_module('relu4', torch.nn.Sigmoid())
+        #         self.add_module('linear5',  add_spectrum_norm(torch.nn.Linear(125, 62)))
+        #         self.add_module('relu5', torch.nn.Sigmoid())
+        #         self.add_module('linear6',  add_spectrum_norm(torch.nn.Linear(62, 30)))
+        #         self.add_module('relu6', torch.nn.Sigmoid())
+        #         self.add_module('linear7',  add_spectrum_norm(torch.nn.Linear(30, 15)))
+        #         self.add_module('relu7', torch.nn.Sigmoid())
+
+        #         # test if using higher dimensions could be better
+        #         if low_dim:
+        #             self.add_module('linear8',  add_spectrum_norm(torch.nn.Linear(15, 1)))
+        #         else:
+        #             self.add_module('linear8',  add_spectrum_norm(torch.nn.Linear(15, 10)))
+
         class LargeFeatureExtractor(torch.nn.Sequential):
             def __init__(self, data_dim, low_dim):
                 super(LargeFeatureExtractor, self).__init__()
@@ -96,7 +128,7 @@ class DKL():
                 def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
                     super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
                     self.feature_extractor = gp_feature_extractor
-                    self.mean_module = gpytorch.means.ConstantMean()
+                    self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
                     if low_dim:
                         self.covar_module = gpytorch.kernels.GridInterpolationKernel(
                             gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
@@ -127,6 +159,7 @@ class DKL():
             self.train_x = self.train_x.cuda()
             self.train_y = self.train_y.cuda()
     
+    # def train_model(self, loss_type="mse", verbose=False, **kwargs):
     def train_model(self, loss_type="nll", verbose=False, **kwargs):
         # Find optimal model hyperparameters
         # print(verbose)
@@ -339,7 +372,7 @@ class DKL():
         if return_record:
             return self.penalty_record, self.mse_record, self.nll_record
 
-    def next_point(self, test_x, acq="ts", method="love", return_idx=False):
+    def next_point(self, test_x, acq="ts", method="love", return_idx=False, beta=2):
         """
         Maximize acquisition function to find next point to query
         """
@@ -375,6 +408,8 @@ class DKL():
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
+                lower, upper = beta_CI(lower, upper, beta)
+
             if acq.lower() == 'ucb':
                 self.acq_val = upper
             elif acq.lower() == 'ci':
@@ -413,7 +448,6 @@ class DKL():
         
         return lower, upper
 
-
     def intersect_CI_next_point(self, test_x, max_test_x_lcb, min_test_x_ucb, acq="ci", beta=2, return_idx=False):
         """
         Maximize acquisition function to find next point to query in the intersection of historical CI
@@ -435,10 +469,7 @@ class DKL():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
                 # intersection
-                mean = (upper + lower)/2
-                sigma = mean - lower
-                upper = mean + sigma * beta
-                lower = mean - sigma * beta
+                lower, upper = beta_CI(lower, upper, beta)
                 assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
                 lower = torch.max(lower.to("cpu"), max_test_x_lcb.to("cpu"))
                 upper = torch.min(upper.to("cpu"), min_test_x_ucb.to("cpu"))

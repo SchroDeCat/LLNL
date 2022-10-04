@@ -17,8 +17,8 @@ import matplotlib as mpl
 import datetime
 import itertools
 
-from ..models import DKL, AE
-from ..utils import save_res, load_res, clustering_methods, beta_CI
+from ..models import DKL, AE, beta_CI
+from ..utils import save_res, load_res, clustering_methods
 from .dkbo_olp import DK_BO_OLP
 from .dkbo_ae import DK_BO_AE
 from sparsemax import Sparsemax
@@ -128,7 +128,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
             sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
                                 n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
                                 max=max_val, pretrained_nn=ae, verbose=verbose)
-            sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, study_res_path=save_path, if_tqdm=verbose)
+            sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, beta=beta, study_res_path=save_path, if_tqdm=verbose)
             reg_record[rep, :] = sim_dkbo.regret
 
     reg_output_record = reg_record.mean(axis=0)
@@ -161,7 +161,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
 def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, regularize=True, low_dim=True, spectrum_norm=False, 
                    n_iter=40, filter_interval=1, acq="ts", ci_intersection=True, verbose=True, lr=1e-2, name="test", return_result=True, retrain_nn=True,
                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION, _minimum_pick = 10, 
-                   _delta = 0.2):
+                   _delta = 0.2, filter_beta=.05):
     # print(ucb_strategy)
     name = name if low_dim else name+'-hd'
     max_val = y_tensor.max()
@@ -217,8 +217,16 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 if default_beta:
                     beta = (2 * np.log((x_tensor.shape[0] * (np.pi * (iter + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
                 _lcb, _ucb = beta_CI(lcb, ucb, beta)
-                max_test_x_lcb, min_test_x_ucb = _lcb.clone(), _ucb.clone()                 
-                ucb_filter = _ucb >= _lcb[observed==1].max() # filtering
+                max_test_x_lcb, min_test_x_ucb = _lcb.clone(), _ucb.clone()    # actually not taking all historical intersections             
+                # if iter == 0:
+                    # max_test_x_lcb, min_test_x_ucb = _lcb.clone(), _ucb.clone()    # actually not taking all historical intersections             
+                # else:
+                    # max_test_x_lcb, min_test_x_ucb = torch.max(max_test_x_lcb, _lcb), torch.min(min_test_x_ucb, _ucb) 
+                
+                _filter_lcb, _filter_ucb = beta_CI(lcb, ucb, filter_beta)
+                # ucb_filter = _filter_ucb >= _filter_lcb[observed==1].max() # filtering
+                ucb_filter = _filter_ucb >= _filter_lcb.max()
+                filter_ratio = ucb_filter.sum()/x_tensor.shape[0]
                 _minimum_pick = 10
                 # print(f"ucb_filter sum {sum(ucb_filter[observed==1])}/{_minimum_pick}")
                 if sum(ucb_filter[observed==1]) <= _minimum_pick:
@@ -247,6 +255,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                     threshold = _lcb[observed==1].max()
                     _output_scale = _dkl.model.covar_module.base_kernel.outputscale
                     plt.savefig(f"{_path}-Scale{_output_scale:.2E}-thres{threshold:.2E}-Iter{iter}.png")
+                    plt.close()
                     print(f"Fig stored to {_path}")
                 
                 sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr, spectrum_norm=spectrum_norm, low_dim=low_dim,
@@ -255,59 +264,62 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
 
                 _roi_ucb = _ucb
                 _roi_lcb, _roi_ucb = sim_dkbo.dkl.CI(x_tensor)
-                if ci_intersection:
-                    if not (default_beta): # only for plot & intersection
-                        _roi_beta = min(1e2, max(1e-2, ucb.max()/_roi_ucb.max()) )
-                    else:
-                        _roi_beta = (2 * np.log((x_tensor[ucb_filter].shape[0] * (np.pi * (iter + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
-                    _roi_lcb_scaled, _roi_ucb_scaled = beta_CI(_roi_lcb, _roi_ucb, _roi_beta)
-                    
-                    if study_partition:
-                        _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}-ROI"
-                        fig = plt.figure()
-                        plt.scatter(y_tensor, _roi_ucb_scaled, c=ucb_filter, s=2, label="$\hat{X}$")
-                        plt.scatter(y_tensor[observed==1], _roi_ucb_scaled[observed==1], color='r', marker="*", s=5, label="Obs")
-                        plt.scatter(y_tensor[observed_unfiltered==1], _roi_ucb_scaled[observed_unfiltered==1], color='g', marker="+", s=25, label="unfiltered_Obs")
-                        plt.xlabel("Label")
-                        plt.ylabel("UCB")
-                        plt.colorbar()
-                        plt.legend()
-                        plt.title(f"{name} Iter {iter} ROI")
-                        _output_scale = sim_dkbo.dkl.model.covar_module.base_kernel.outputscale
-                        plt.savefig(f"{_path}-Scale{_output_scale:.2E}_roi_beta{_roi_beta:.1}-Iter{iter}.png")
-                        print(f"Fig stored to {_path}")
-                    
-                    # intersection of ROI CI
-                    # max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = torch.max(max_test_x_lcb[ucb_filter], _roi_lcb_scaled[ucb_filter]), torch.min(min_test_x_ucb[ucb_filter], _roi_ucb_scaled[ucb_filter]) # intersection of ROI CI
-                    _max_test_x_lcb, _min_test_x_ucb = torch.max(max_test_x_lcb, _roi_lcb_scaled), torch.min(min_test_x_ucb, _roi_ucb_scaled) 
-                    max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = _max_test_x_lcb[ucb_filter], _min_test_x_ucb[ucb_filter]
-                    
-                    if study_partition:
-                        _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}-INTER"
-                        fig = plt.figure()
-                        plt.scatter(y_tensor, _min_test_x_ucb, c=ucb_filter, s=2, label="$\hat{X}$")
-                        plt.scatter(y_tensor[observed==1], _min_test_x_ucb[observed==1], color='r', marker="*", s=5, label="Obs")
-                        plt.scatter(y_tensor[observed_unfiltered==1], _min_test_x_ucb[observed_unfiltered==1], color='g', marker="+", s=25, label="unfiltered_Obs")
-                        plt.xlabel("Label")
-                        plt.ylabel("UCB")
-                        plt.colorbar()
-                        plt.legend()
-                        plt.title(f"{name} Iter {iter} INTER")
-                        _output_scale = sim_dkbo.dkl.model.covar_module.base_kernel.outputscale
-                        plt.savefig(f"{_path}-Scale{_output_scale:.2E}_roi_beta{_roi_beta:.1}-Iter{iter}.png")
-                        print(f"Fig stored to {_path}")
-                        print(f"global {ucb.max()}{ucb.min()} ROI {_roi_ucb_scaled.max()}{_roi_ucb_scaled.min()} Inter {_min_test_x_ucb.max()} {_min_test_x_ucb.min()} ")
+                # if ci_intersection:
+                if not (default_beta): # only for plot & intersection
+                    _roi_beta = min(1e2, max(1e-2, ucb.max()/_roi_ucb.max()) )
+                else:
+                    _roi_beta = (2 * np.log((x_tensor[ucb_filter].shape[0] * (np.pi * (iter + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
+                _roi_lcb_scaled, _roi_ucb_scaled = beta_CI(_roi_lcb, _roi_ucb, _roi_beta)
+                
+                if study_partition:
+                    _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}-ROI"
+                    fig = plt.figure()
+                    plt.scatter(y_tensor, _roi_ucb_scaled, c=ucb_filter, s=2, label="$\hat{X}$")
+                    plt.scatter(y_tensor[observed==1], _roi_ucb_scaled[observed==1], color='r', marker="*", s=5, label="Obs")
+                    plt.scatter(y_tensor[observed_unfiltered==1], _roi_ucb_scaled[observed_unfiltered==1], color='g', marker="+", s=25, label="unfiltered_Obs")
+                    plt.xlabel("Label")
+                    plt.ylabel("UCB")
+                    plt.colorbar()
+                    plt.legend()
+                    plt.title(f"{name} Iter {iter} ROI")
+                    _output_scale = sim_dkbo.dkl.model.covar_module.base_kernel.outputscale
+                    plt.savefig(f"{_path}-Scale{_output_scale:.2E}_roi_beta{_roi_beta:.1}-Iter{iter}.png")
+                    plt.close()
+                    print(f"Fig stored to {_path}")
+                
+                # intersection of ROI CI
+                # max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = torch.max(max_test_x_lcb[ucb_filter], _roi_lcb_scaled[ucb_filter]), torch.min(min_test_x_ucb[ucb_filter], _roi_ucb_scaled[ucb_filter]) # intersection of ROI CI
+                _max_test_x_lcb, _min_test_x_ucb = torch.max(max_test_x_lcb, _roi_lcb_scaled), torch.min(min_test_x_ucb, _roi_ucb_scaled) 
+                max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = _max_test_x_lcb[ucb_filter], _min_test_x_ucb[ucb_filter]
+                
+                if study_partition:
+                    _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}-INTER"
+                    fig = plt.figure()
+                    plt.scatter(y_tensor, _min_test_x_ucb, c=ucb_filter, s=2, label="$\hat{X}$")
+                    plt.scatter(y_tensor[observed==1], _min_test_x_ucb[observed==1], color='r', marker="*", s=5, label="Obs")
+                    plt.scatter(y_tensor[observed_unfiltered==1], _min_test_x_ucb[observed_unfiltered==1], color='g', marker="+", s=25, label="unfiltered_Obs")
+                    plt.xlabel("Label")
+                    plt.ylabel("UCB")
+                    plt.colorbar()
+                    plt.legend()
+                    plt.title(f"{name} Iter {iter} INTER")
+                    _output_scale = sim_dkbo.dkl.model.covar_module.base_kernel.outputscale
+                    plt.savefig(f"{_path}-Scale{_output_scale:.2E}_roi_beta{_roi_beta:.1}-Iter{iter}.png")
+                    plt.close()
+                    print(f"Fig stored to {_path}")
+                    print(f"global {ucb.max()}{ucb.min()} ROI {_roi_ucb_scaled.max()}{_roi_ucb_scaled.min()} Inter {_min_test_x_ucb.max()} {_min_test_x_ucb.min()} ")
 
                 query_num = min(filter_interval, n_iter-iter)
-                if query_num <= n_iter - iter:
-                # if query_num <= n_iter - iter and acq.lower == 'ci':
+                if filter_interval >= n_iter - iter:
+                # if filter_interval >= n_iter - iter and acq.lower == 'ci':
                     _acq = 'lcb'
                 else:
                     _acq = acq
                 _roi_beta_passed_in = _roi_beta  if not (default_beta) else 0 # allow it to calculate internal ROI_beta
-                sim_dkbo.query(n_iter=query_num, acq=_acq, study_ucb=False, study_interval=10, study_res_path=save_path, 
+                sim_dkbo.query(n_iter=query_num, acq=_acq, study_ucb=False, study_interval=10, study_res_path=save_path,  if_tqdm=verbose,
                                 ci_intersection=ci_intersection, max_test_x_lcb=max_test_x_lcb[ucb_filter], min_test_x_ucb=min_test_x_ucb[ucb_filter], beta=_roi_beta_passed_in)
-                # sim_dkbo.query(n_iter=query_num, acq=acq, study_ucb=False, study_interval=10, study_res_path=save_path, 
+                                # ci_intersection=ci_intersection if iter > n_iter //2 else False, max_test_x_lcb=max_test_x_lcb[ucb_filter], min_test_x_ucb=min_test_x_ucb[ucb_filter], beta=_roi_beta_passed_in)
+                # sim_dkbo.query(n_iter=query_num, acq=acq, study_ucb=False, study_interval=10, study_res_path=save_path,
                                 # ci_intersection=ci_intersection, max_test_x_lcb=max_test_x_lcb[ucb_filter], min_test_x_ucb=_roi_ucb[ucb_filter], beta=_roi_beta)
                 # sim_dkbo.query(n_iter=query_num, acq=acq, study_ucb=False, study_interval=10, study_res_path=save_path)
                 
@@ -315,16 +327,16 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 _step_size = min(iter+filter_interval, n_iter)
                 reg_record[rep, iter:_step_size] = sim_dkbo.regret[-_step_size:]
                 # update interval
-                max_LUCB_interval_record[rep:, 0, iter:_step_size] = (ucb.max() - lcb.max()).numpy()
-                max_LUCB_interval_record[rep:, 1, iter:_step_size] = (_roi_ucb.max() - _roi_lcb.max()).numpy()
-                max_LUCB_interval_record[rep:, 2, iter:_step_size] = (min_test_x_ucb.max() - max_test_x_lcb.max()).numpy()
+                max_LUCB_interval_record[rep:, 0, iter:_step_size] = (_ucb.max() - _lcb.max()).numpy()
+                max_LUCB_interval_record[rep:, 1, iter:_step_size] = (_roi_ucb_scaled[ucb_filter].max() - _roi_lcb_scaled[ucb_filter].max()).numpy()
+                max_LUCB_interval_record[rep:, 2, iter:_step_size] = (min_test_x_ucb[ucb_filter].max() - max_test_x_lcb[ucb_filter].max()).numpy()
 
                 # early stop
                 if reg_record[rep, :_step_size].min() < 1e-16:
                     break
 
                 # iterator.set_postfix(loss=reg_record[rep, :_step_size].min())
-                iterator.set_postfix({'beta': beta, "roi_beta": _roi_beta, "regret":reg_record[rep, :_step_size].min(), })
+                iterator.set_postfix({'beta': beta, "roi_beta": _roi_beta, "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio, "Filter Gap": _filter_ucb.min() - _filter_lcb.max()})
 
                 ucb_filtered_idx = util_array[ucb_filter]
                 observed[ucb_filtered_idx[sim_dkbo.observed==1]] = 1
@@ -358,7 +370,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        _path = f"{save_path}/Filter-{name}-B{beta}-FB{filter_beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
         plt.savefig(f"{_path}.png")
         # interval
         fig = plt.figure()
@@ -372,14 +384,15 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
         plt.title(f'Interval for {name}')
         _path = f"{save_path}/Filter-{name}-interval-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
         plt.savefig(f"{_path}.png")
+        plt.close()
         # plt.show()
 
     if save_result:
         assert not (save_path is None)
-        save_res(save_path=save_path, name=f"{name}-{beta}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"{name}-B{beta}-FB{filter_beta}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
 
-        save_res(save_path=save_path, name=f"{name}-{beta}-interval", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"{name}-B{beta}-FB{filter_beta}-interval", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
 
 
