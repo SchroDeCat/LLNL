@@ -37,7 +37,7 @@ if __name__ == "__main__":
     # parse the cli
     cli_parser = argparse.ArgumentParser(description="configuration of mf test")
     cli_parser.add_argument("--name", nargs='?', default="test", type=str, help="name of experiment",)
-    cli_parser.add_argument("--aedir", nargs='?', default="./tmp", type=str, help="directory of the pretrained Autoencoder",)
+    cli_parser.add_argument("--aedir", nargs='?', default=None, type=str, help="directory of the pretrained Autoencoder",)
     cli_parser.add_argument("--subdir", nargs='?', default="./res", type=str, help="directory to store the scripts and results",)
     cli_parser.add_argument("--datadir", nargs='?', default="./data", type=str, help="directory of the test datasets")
     cli_parser.add_argument("-a",  action="store_true", default=False, help="flag of if retrain AE")
@@ -56,6 +56,7 @@ if __name__ == "__main__":
     # cli_parser.add_argument("--n_neighbor", nargs='?', default=50, type=int, help="number of neighbors used to regularize")
     cli_parser.add_argument("--init_num", nargs='?', default=10, type=int, help="number of initial random points")
     cli_parser.add_argument("--beta", nargs='?', default=2, type=float, help="confidence factor")
+    cli_parser.add_argument("--fbeta", nargs='?', default=2, type=float, help="filtering factor")
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
@@ -110,7 +111,7 @@ if __name__ == "__main__":
     print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim} CI intersection {cli_args.intersection} verbose={verbose}")
     if cli_args.o:
         res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta, regularize=cli_args.r,   ci_intersection=cli_args.intersection,
-                        n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
+                        n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times, filter_beta=cli_args.fbeta,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=not cli_args.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
     else:
         pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta,

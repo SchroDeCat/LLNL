@@ -134,3 +134,6 @@ dmypy.json
 /tmp
 /res
 .DS_Store
+*.png
+*.eps
+*.pt
