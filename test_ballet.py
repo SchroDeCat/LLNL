@@ -137,3 +137,8 @@ if __name__ == "__main__":
                                     run_times=run_times, horizon=exp["horizon"], acq=acq, fbeta=exp["fbeta"],
                                     intersection=intersection, ballet=ballet)
                         process(config)
+            else:
+                config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], 
+                                    run_times=run_times, horizon=exp["horizon"], acq=acq, fbeta=exp["fbeta"],
+                                    intersection=intersection, ballet=ballet)
+                process(config)
