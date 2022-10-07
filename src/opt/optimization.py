@@ -137,6 +137,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         name = name + "_hd"
 
     if plot_result:
+        plt.figure()
         plt.plot(reg_output_record.squeeze(), label="dkbo")
         plt.legend()
         plt.xlabel("Iteration")
@@ -145,6 +146,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         # plt.show()
         _path = f"{save_path}/Pure-DK-{name}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}"
         plt.savefig(f"{_path}.png")
+        plt.close()
 
     if save_result:
         assert not (save_path is None)
