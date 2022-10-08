@@ -137,10 +137,10 @@ class DK_BO_AE():
                 plt.savefig(f"{_path}/pure_dkbo_Scaling{self.dkl.model.covar_module.base_kernel.outputscale}_Iter{i}.png")
 
             # retrain
-            self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=True, pretrained_nn=self.pretrained_nn, retrain_nn=self.retrain_nn,
+            self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, pretrained_nn=self.pretrained_nn, retrain_nn=self.retrain_nn,
                                  spectrum_norm=self.spectrum_norm)
             if self.record_loss:
-                self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=True, pretrained_nn=None, lr=self.lr, spectrum_norm=self.spectrum_norm)
+                self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=self.spectrum_norm)
             # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
             self.train()
             if self.record_loss:
