@@ -144,9 +144,11 @@ if __name__ == "__main__":
         np.save(f"{save_path}/turbo{'-bo' if not discrete else ''}-{name}-R{n_repeat}-T{n_iter}.npy", reg_record)
 
     if cli_args.p:
+        plt.figure()
         plt.plot(reg_record.mean(axis=0))
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
         _path = f"{save_path}/turbo{'-bo' if not discrete else ''}-{name}-R{n_repeat}-T{n_iter}"
         plt.savefig(f"{_path}.png")
+        plt.close()

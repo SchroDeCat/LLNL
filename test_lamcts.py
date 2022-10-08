@@ -197,6 +197,7 @@ if __name__ == "__main__":
         # opt.store_results(cli_args.subdir)
         pass
     if cli_args.p:
+        fig = plt.figure()
         plt.plot(reg_record.mean(axis=0))
         plt.ylabel("regret")
         plt.xlabel("Iteration")
@@ -204,6 +205,7 @@ if __name__ == "__main__":
         _path = f"{save_path}/lamcts-{solver_type}-{name}-R{n_repeat}-P{1}-T{n_iter}"
         plt.savefig(f"{_path}.png")
         # opt.plot_results(cli_args.subdir)
+        plt.close()
         pass
 
 
