@@ -52,7 +52,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--leaf_size", nargs='?', default=10, type=int, help="leaf size of MCTS")
-    cli_parser.add_argument("--solver", nargs='?', default='dkbo', type=str, help="solver type: dkbo,bo, turbo")
+    cli_parser.add_argument("--solver", nargs='?', default='dkbo', type=str, help="solver type: dkbo, bo, turbo, dkbo-hd")
     # cli_parser.add_argument("--learning_rate", nargs='?', default=2, type=int, help="rank of the learning rate")
     cli_parser.add_argument("-a",  action="store_true", default=False, help="flag of if retrain AE")
     

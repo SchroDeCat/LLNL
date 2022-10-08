@@ -266,6 +266,9 @@ class MCTS:
                 elif self.solver_type == 'dkbo':
                     samples, _ = leaf.propose_samples_dkbo(num_samples=1, path=path, dataset=self.dataset, 
                                         samples=self.samples, pretrained_nn=self.pretrained_nn, func=self.func)
+                elif self.solver_type == 'dkbo-hd':
+                    samples, _ = leaf.propose_samples_dkbo(num_samples=1, path=path, dataset=self.dataset, 
+                                        samples=self.samples, pretrained_nn=self.pretrained_nn, func=self.func, high_dim=True)
                     
                 else:
                     raise Exception("solver not implemented")

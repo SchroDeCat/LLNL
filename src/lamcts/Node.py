@@ -111,8 +111,8 @@ class Node:
     def get_parent_str(self):
         return self.parent.get_name()
     
-    def propose_samples_dkbo(self, num_samples, path, samples, dataset, pretrained_nn, func):
-        proposed_X, fX = self.classifier.propose_samples_dkbo(num_samples=num_samples, path=path, samples=samples, dataset=dataset, pretrained_nn=pretrained_nn, func=func)
+    def propose_samples_dkbo(self, num_samples, path, samples, dataset, pretrained_nn, func, high_dim=False):
+        proposed_X, fX = self.classifier.propose_samples_dkbo(num_samples=num_samples, path=path, samples=samples, dataset=dataset, pretrained_nn=pretrained_nn, func=func, high_dim=high_dim)
         return proposed_X, fX
 
     def propose_samples_bo(self, num_samples, path, lb, ub, samples, x=None):
