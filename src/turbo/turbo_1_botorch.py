@@ -114,9 +114,9 @@ class TuRBO():
                     return torch.nn.utils.parametrizations.spectral_norm(module)
                 else:
                     return module
-                    
+
             class LargeFeatureExtractor(torch.nn.Sequential):
-                def __init__(self, data_dim, low_dim):
+                def __init__(self, data_dim):
                     super(LargeFeatureExtractor, self).__init__()
                     self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
                     self.add_module('relu1', torch.nn.ReLU())
