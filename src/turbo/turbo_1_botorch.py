@@ -96,7 +96,7 @@ class TuRBO():
                 num_dims=self.dim, grid_size=10)
             # self.covar_module = gpytorch.kernels.LinearKernel()
     
-    def opt(self, max_iter:int=100):
+    def opt(self, max_iter:int=100, low_dim:bool=True):
         low_dim = False
         # print(self.verbose)
         iterator = tqdm(range(max_iter)) if self.verbose else range(max_iter)
@@ -109,26 +109,40 @@ class TuRBO():
             # print(f"x {self.X_turbo} y {self.Y_turbo}")
             self.train_Y = (self.Y_turbo - self.Y_turbo.mean()) / self.Y_turbo.std()
             # print(f"x {self.X_turbo} y {self.train_Y}")
+            def add_spectrum_norm(module, normalize=False):
+                if normalize:
+                    return torch.nn.utils.parametrizations.spectral_norm(module)
+                else:
+                    return module
+                    
             class LargeFeatureExtractor(torch.nn.Sequential):
-                def __init__(self, data_dim):
+                def __init__(self, data_dim, low_dim):
                     super(LargeFeatureExtractor, self).__init__()
-                    self.add_module('linear1', torch.nn.Linear(data_dim, 1000))
+                    self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
                     self.add_module('relu1', torch.nn.ReLU())
-                    self.add_module('linear2', torch.nn.Linear(1000, 500))
+                    self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
                     self.add_module('relu2', torch.nn.ReLU())
-                    self.add_module('linear3', torch.nn.Linear(500, 50))
+                    self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
                     # test if using higher dimensions could be better
-                    self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4', torch.nn.Linear(50, 1))
+                    if low_dim:
+                        self.add_module('relu3', torch.nn.ReLU())
+                        self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
+                    else:
+                        self.add_module('relu3', torch.nn.ReLU())
+                        self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
 
             class GPRegressionModel(gpytorch.models.ExactGP):
                     def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
                         super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
                         self.feature_extractor = gp_feature_extractor
-                        self.mean_module = gpytorch.means.ConstantMean()
-                        self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
-                            num_dims=1, grid_size=100)
+                        self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                        if low_dim:
+                            self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
+                                outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
+                                num_dims=1, grid_size=100)
+                        else:
+                            self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
 
                         # This module will scale the NN features so that they're nice values
                         self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)

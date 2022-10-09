@@ -147,10 +147,12 @@ if __name__ == "__main__":
     idx = 0
     times = n_repeat
     max_retry = 10
+
+    # print(solver_type)
     while t < times:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            if cli_args.f:
+        if cli_args.f:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
                 # print(n_init+n_repeat*n_iter)
                 # _seed = rep*n_iter + n_init
                 _seed = _random_seed_gen()[t]
@@ -163,24 +165,28 @@ if __name__ == "__main__":
 
         # the algorithm is minimization
         try:
-            agent = MCTS(
-                    lb = lb,              # the lower bound of each problem dimensions
-                    ub = ub,              # the upper bound of each problem dimensions
-                    dims = data_dim,          # the problem dimensions
-                    dataset = dataset,
-                    ninits = cli_args.init_num,      # the number of random samples used in initializations 
-                    func = obj_func_simple_neg,          # function object to be optimized
-                    Cp = Cp,                    # Cp for MCTS
-                    leaf_size = leaf_size,      # tree leaf size
-                    kernel_type = kernel_type,  # SVM configruation
-                    gamma_type = gamma_type,    # SVM configruation
-                    solver_type= solver_type,    # either "bo" or "turbo"
-                    verbose = verbose,          # if printing verbose messages
-                    pretrained_nn = ae,
-                    )
+        # if True:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                agent = MCTS(
+                        lb = lb,              # the lower bound of each problem dimensions
+                        ub = ub,              # the upper bound of each problem dimensions
+                        dims = data_dim,          # the problem dimensions
+                        dataset = dataset,
+                        ninits = cli_args.init_num,      # the number of random samples used in initializations 
+                        func = obj_func_simple_neg,          # function object to be optimized
+                        Cp = Cp,                    # Cp for MCTS
+                        leaf_size = leaf_size,      # tree leaf size
+                        kernel_type = kernel_type,  # SVM configruation
+                        gamma_type = gamma_type,    # SVM configruation
+                        solver_type= solver_type,    # either "bo" or "turbo"
+                        verbose = verbose,          # if printing verbose messages
+                        pretrained_nn = ae,
+                        )
 
-            agent.search(iterations = cli_args.opt_horizon)
-        except:
+                agent.search(iterations = cli_args.opt_horizon)
+        except Exception as e:
+            print(f"Failed {t}: {e} ")
             t = t+1
             times = min(times + 1, n_repeat + max_retry)
             continue
