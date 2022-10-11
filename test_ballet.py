@@ -154,17 +154,39 @@ def process(config):
 
 if __name__ == "__main__":
     run_times = 10
-    exps = [{"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":1.0, "horizon":100, "high_dim": True, 'train_iter':100},
-            {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.6, "horizon":100, "high_dim": True, 'train_iter':100},]
+    exps = [{"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.8, "horizon":100, "high_dim": False, 'train_iter':200},]
+    # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":100, "high_dim": True, 'train_iter':200}]
+    # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.1, "horizon":100, "high_dim": True},
+    #         {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": True},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True},
+    #         {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.8, "horizon":100, "high_dim": True},
+    #         {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": True},
+    #         {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":0.8, "horizon":100, "high_dim": True},
+    #         {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.1, "horizon":100, "high_dim": False},
+    #         {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": False},
+    #         {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.8, "horizon":100, "high_dim": False},
+    #         {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": False},
+    #         {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":0.8, "horizon":100, "high_dim": False},
+    #         ]
+    # exps = [{"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':100},
+    #         {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": True,  'train_iter':100}
+    #          ]
+    # exps = [{"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":1.0, "horizon":100, "high_dim": True, 'train_iter':100},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.6, "horizon":100, "high_dim": True, 'train_iter':100},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':100},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.4, "horizon":100, "high_dim": True, 'train_iter':100},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.2, "horizon":100, "high_dim": True, 'train_iter':100},
+    #          ]
     # exps = [{"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':100},]
             # {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':1000},]
     # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.1, "horizon":100, "high_dim": False},
-            # {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False},
-            # {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True},
-            # {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.8, "horizon":100, "high_dim": True},
-            # {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": False},
-            # {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":0.8, "horizon":100, "high_dim": True},
-            # ]
+    #         {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True},
+    #         {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.8, "horizon":100, "high_dim": True},
+    #         {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": False},
+    #         {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":0.8, "horizon":100, "high_dim": True},
+    #         ]
             # {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":0.05, "horizon":200, "high_dim": True},
             # {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.2, "horizon":100, "high_dim": False},
             # {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":100, "high_dim": False},
@@ -175,10 +197,12 @@ if __name__ == "__main__":
     for exp in exps:
         for ballet in [True, False]:
             if ballet:
+                continue
                 for intersection in [True, False]:
-                    if not intersection:
-                        continue
+                    # if intersection:
+                        # continue
                     acqs = ['ci']
+                    # acqs = ['ucb']
                     # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci']
                     for acq in acqs:
                         print(acq, exp, "ballet", ballet, 'intersection', intersection)
@@ -188,9 +212,9 @@ if __name__ == "__main__":
                         process(config)
             else:
                 for acq in ['ts', 'ucb','ci']:
-                    print(acq, exp, "ballet", ballet, 'intersection', intersection)
+                    print(acq, exp, "ballet", ballet)
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], 
                                         run_times=run_times, horizon=exp["horizon"], acq=acq, fbeta=exp["fbeta"],
-                                        intersection=False, ballet=ballet, high_dim=exp["high_dim"])
-                    # process(config)
+                                        intersection=False, ballet=ballet, high_dim=exp["high_dim"], train_time=exp["train_iter"])
+                    process(config)
                     # plot_pure_dkbo(config)

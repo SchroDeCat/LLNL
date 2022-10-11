@@ -1,6 +1,7 @@
 import os
 import math
 from dataclasses import dataclass
+from random import random
 
 import torch
 from botorch.acquisition import qExpectedImprovement
@@ -138,9 +139,9 @@ class TuRBO():
                         self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
                         if low_dim:
                             self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
-                                outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
-                                num_dims=1, grid_size=100)
+                                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+                                                                num_dims=1, grid_size=100)
+                                # outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
                         else:
                             self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
 
@@ -324,7 +325,9 @@ class TuRBO():
         self.likelihood.eval()
         acq=self.acqf
 
-        test_x = self.test_x.to(device)
+        
+        random_filter = np.random.choice(100, self.test_x.shape[0])
+        test_x = self.test_x[random_filter].to(device)
 
         if acq.lower() == "ts":
             if method.lower() == "love":
@@ -354,7 +357,7 @@ class TuRBO():
         max_pts = torch.argmax(self.acq_val)
         candidate = test_x[max_pts]
         if return_idx:
-            return max_pts
+            return random_filter[max_pts]
         else:
             return candidate
 
