@@ -32,7 +32,13 @@ for acq in acqs:
         _attr = list(filename.split("-"))
         if dkbo:
             pass
-            _name = _attr[1][:-2]
+            _name = _attr[1]
+            # print(_name)
+            if _name.endswith("_hd"):
+                _attr.append("hd")
+                print(_name)
+                _name = _name[:-3]
+            _name = _name[:-2]
             if not _name in names:
                 continue
             hd          = "hd"  in _attr
@@ -60,7 +66,7 @@ for acq in acqs:
             
             exp_name = f"ballet{'-hd' if hd else ''}-{acq}-{_attr[2]}-{_attr[3]}-{_attr[6]}-{_attr[7]}-{_attr[8]}-{_attr[9]}{'-sec' if intersec else ''}"
         
-        print(f"{_name}-{n_repeat}-{exp_name}")
+        # print(f"{_name}-{n_repeat}-{exp_name}")
         if not f"{_name}-{n_repeat}" in res_collect.keys():
             res_collect[f"{_name}-{n_repeat}"] = deepcopy(RES_num)
         res_collect[f"{_name}-{n_repeat}"][exp_name] = np.load(f"{dir}/{_filename}")
@@ -86,7 +92,7 @@ for filename in os.listdir(dir):
 
     
     exp_name = f"lamcts{'-hd' if hd else ''}-{_attr[5]}"
-    print(f"{_name}-{n_repeat}-{exp_name}")
+    # print(f"{_name}-{n_repeat}-{exp_name}")
     if not f"{_name}-{n_repeat}" in res_collect.keys():
         res_collect[f"{_name}-{n_repeat}"] = deepcopy(RES_num)
     res_collect[f"{_name}-{n_repeat}"][exp_name] = np.load(f"{dir}/{_filename}")[:,n_init:]
@@ -104,6 +110,8 @@ for key, RES_num in res_collect.items():
         # RES_num[method][:,0] = init_regret
         RES_num[method] = np.minimum.accumulate(RES_num[method], axis=1)
         ax.plot(RES_num[method].mean(axis=0), label=method)
+        ax.fill_between(np.arange(RES_num[method].shape[1]), RES_num[method].mean(axis=0) - RES_num[method].std(axis=0) * coef, 
+                        RES_num[method].mean(axis=0) + RES_num[method].std(axis=0) * coef, alpha=0.3)
         # ax.plot(RES_num[method][:,:n_iter].mean(axis=0), label=method)
         # ax.fill_between(np.arange(n_iter), RES_num[method][:,:n_iter].mean(axis=0) - RES_num[method][:,:n_iter].std(axis=0) * coef, 
                         # RES_num[method][:,:n_iter].mean(axis=0) + RES_num[method][:,:n_iter].std(axis=0) * coef, alpha=0.3)
