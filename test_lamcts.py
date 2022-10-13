@@ -204,7 +204,7 @@ if __name__ == "__main__":
         pass
     if cli_args.p:
         fig = plt.figure()
-        plt.plot(reg_record.mean(axis=0))
+        plt.plot(reg_record.mean(axis=0)[cli_args.init_num:])
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')

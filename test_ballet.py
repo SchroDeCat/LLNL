@@ -58,7 +58,8 @@ class Configuration():
         self.return_model=False 
         self.v=False
         self.beta=0     # true beta
-        self.filter_interval=10 if horizon > 100 else horizon //10
+        # self.filter_interval=10 if horizon > 100 else horizon //10
+        self.filter_interval=1
         self.opt_horizon=horizon
         self.train_times=train_time
         self.learning_rate=4
@@ -154,7 +155,16 @@ def process(config):
 
 if __name__ == "__main__":
     run_times = 10
-    exps = [{"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.8, "horizon":100, "high_dim": False, 'train_iter':200},]
+    exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2, "horizon":100, "high_dim": False, 'train_iter':10},
+            {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
+            {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
+            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
+            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
+            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
+            ]
+    # exps = [{"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",        "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},]
+    # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':100},]
+    # exps = [{"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.8, "horizon":100, "high_dim": False, 'train_iter':100},]
     # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":100, "high_dim": True, 'train_iter':200}]
     # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.1, "horizon":100, "high_dim": True},
     #         {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": True},
@@ -197,10 +207,10 @@ if __name__ == "__main__":
     for exp in exps:
         for ballet in [True, False]:
             if ballet:
-                continue
+                # continue
                 for intersection in [True, False]:
-                    # if intersection:
-                        # continue
+                    if not intersection:
+                        continue
                     acqs = ['ci']
                     # acqs = ['ucb']
                     # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci']
@@ -216,5 +226,5 @@ if __name__ == "__main__":
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], 
                                         run_times=run_times, horizon=exp["horizon"], acq=acq, fbeta=exp["fbeta"],
                                         intersection=False, ballet=ballet, high_dim=exp["high_dim"], train_time=exp["train_iter"])
-                    process(config)
+                    # process(config)
                     # plot_pure_dkbo(config)

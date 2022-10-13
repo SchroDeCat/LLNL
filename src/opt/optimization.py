@@ -270,6 +270,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 if not (default_beta): # only for plot & intersection
                     _roi_beta = min(1e2, max(1e-2, ucb.max()/_roi_ucb.max()) )
                 else:
+                    # _roi_beta = min(1e2, max(1e-2, ucb.max()/_roi_ucb.max()) )
+                    # _roi_beta = beta
                     _roi_beta = (2 * np.log((x_tensor[ucb_filter].shape[0] * (np.pi * (iter + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
                 _roi_lcb_scaled, _roi_ucb_scaled = beta_CI(_roi_lcb, _roi_ucb, _roi_beta)
                 
@@ -290,9 +292,14 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                     print(f"Fig stored to {_path}")
                 
                 # intersection of ROI CI
+                max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = beta_CI(lcb[ucb_filter], ucb[ucb_filter], _roi_beta)
                 # max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = torch.max(max_test_x_lcb[ucb_filter], _roi_lcb_scaled[ucb_filter]), torch.min(min_test_x_ucb[ucb_filter], _roi_ucb_scaled[ucb_filter]) # intersection of ROI CI
-                _max_test_x_lcb, _min_test_x_ucb = torch.max(max_test_x_lcb, _roi_lcb_scaled), torch.min(min_test_x_ucb, _roi_ucb_scaled) 
+                _lcb_scaling_factor, _ucb_scaling_factor = max_test_x_lcb[ucb_filter].max()/ _roi_lcb_scaled[ucb_filter].max(), min_test_x_ucb[ucb_filter].max() / _roi_ucb_scaled[ucb_filter].max()
+                # _max_test_x_lcb, _min_test_x_ucb = torch.max(max_test_x_lcb, _roi_lcb_scaled), torch.min(min_test_x_ucb, _roi_ucb_scaled) 
+                _max_test_x_lcb, _min_test_x_ucb = torch.max(max_test_x_lcb, _roi_lcb_scaled * _lcb_scaling_factor), torch.min(min_test_x_ucb, _roi_ucb_scaled * _ucb_scaling_factor) 
                 max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = _max_test_x_lcb[ucb_filter], _min_test_x_ucb[ucb_filter]
+                # if max_test_x_lcb[ucb_filter].max() -  min_test_x_ucb[ucb_filter].max() < 0:
+                #     print(iter,min_test_x_ucb[ucb_filter].max() -  max_test_x_lcb[ucb_filter].max())
                 
                 if study_partition:
                     _path = f"{save_path}/Filter-{name}-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}-INTER"
