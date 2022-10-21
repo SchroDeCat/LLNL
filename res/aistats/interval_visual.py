@@ -11,6 +11,7 @@ fig = plt.figure(figsize=[18, 10])
 def plot_subfigure(ax, RES_num, name, data_size=1000,_delta=0.2):
     n_iter_list = []
     for method in RES_num.keys():
+        RES_num[method] = RES_num[method][:,:,n_init:]
         CI = 1
         n_repeat = RES_num[method].shape[0]
         n_iter = RES_num[method].shape[-1]
@@ -121,6 +122,7 @@ handles, labels = ax.get_legend_handles_labels()
 plt.tight_layout()
 fig.legend(handles, labels, loc='upper center',bbox_to_anchor=(0.5, 1.05), ncol=len(labels), prop={'size': fontsize})
 plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.3, hspace=None)
+plt.savefig("aistats-interval.png", bbox_inches='tight')
 plt.savefig("aistats-interval.pdf", bbox_inches='tight')
 plt.close()
 # plt.show()
