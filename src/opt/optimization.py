@@ -183,6 +183,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
         ae = None
 
     default_beta = beta <= 0
+    default_fbeta = filter_beta < 1e-10
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -224,7 +225,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                     # max_test_x_lcb, min_test_x_ucb = _lcb.clone(), _ucb.clone()    # actually not taking all historical intersections             
                 # else:
                     # max_test_x_lcb, min_test_x_ucb = torch.max(max_test_x_lcb, _lcb), torch.min(min_test_x_ucb, _ucb) 
-                if filter_beta < 1e-10:
+                if default_fbeta:
                     filter_beta = beta
                 
                 _filter_lcb, _filter_ucb = beta_CI(lcb, ucb, filter_beta)
@@ -347,7 +348,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                     break
 
                 # iterator.set_postfix(loss=reg_record[rep, :_step_size].min())
-                iterator.set_postfix({'beta': beta, "roi_beta": _roi_beta, "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio, "Filter Gap": _filter_ucb.min() - _filter_lcb.max()})
+                iterator.set_postfix({'beta': beta, 'fbeta': filter_beta, "roi_beta": _roi_beta, "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio, "Filter Gap": _filter_ucb.min() - _filter_lcb.max()})
 
                 ucb_filtered_idx = util_array[ucb_filter]
                 observed[ucb_filtered_idx[sim_dkbo.observed==1]] = 1
