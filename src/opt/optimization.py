@@ -39,6 +39,8 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # STUDY_PARTITION = True
 STUDY_PARTITION = False
 
+
+
 def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
     '''
@@ -95,7 +97,6 @@ def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_ite
 
     if return_result:
         pass
-
 
 def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True, beta=2,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
@@ -540,3 +541,166 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
 
     if return_result:
         return reg_record
+
+def truvar(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, low_dim=True, spectrum_norm=False, 
+                   n_iter=40, filter_interval=1, ci_intersection=True, verbose=True, lr=1e-2, name="test", return_result=True, retrain_nn=True,
+                   plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, _minimum_pick = 10, 
+                   _delta = 0.2, filter_beta=.05):
+    '''Truncated Variance Reduction'''
+    name = name if low_dim else name+'-hd'
+    acq = 'truvar'
+    max_val = y_tensor.max()
+    reg_record = np.zeros([n_repeat, n_iter])
+    max_LUCB_interval_record = np.zeros([n_repeat, 3, n_iter]) # 0 - Global, 1 - ROI, 2 -- intersection
+     # init dkl and generate ucb for partition
+    data_size = x_tensor.size(0)
+    util_array = np.arange(data_size)
+
+
+    if pretrained:
+        assert not (ae_loc is None)
+        ae = AE(x_tensor, lr=1e-3)
+        ae.load_state_dict(torch.load(ae_loc, map_location=DEVICE))
+    else:
+        ae = None
+
+    default_beta = beta <= 0
+    default_fbeta = filter_beta < 1e-10
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for rep in tqdm.tqdm(range(n_repeat), desc=f"Experiment Rep"):
+            # set seed
+            if fix_seed:
+                _seed = rep * 20 + n_init
+                # _seed = 70
+                torch.manual_seed(_seed)
+                np.random.seed(_seed)
+                random.seed(_seed)
+                torch.cuda.manual_seed(_seed)
+                torch.backends.cudnn.benchmark = False
+                torch.backends.cudnn.deterministic = True
+                
+            # init in each round
+            observed = np.zeros(data_size)
+            observed[:n_init] = 1
+            init_x = x_tensor[:n_init]
+            init_y = y_tensor[:n_init]
+            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr, spectrum_norm=spectrum_norm)
+            lcb, ucb = _dkl.CI(x_tensor.to(DEVICE))
+
+
+            # each test instance
+            iterator = tqdm.tqdm(range(0, n_iter, filter_interval))
+            for iter in iterator:
+                if default_beta:
+                    beta = (2 * np.log((x_tensor.shape[0] * (np.pi * (iter + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
+                _lcb, _ucb = beta_CI(lcb, ucb, beta)
+                max_test_x_lcb, min_test_x_ucb = _lcb.clone(), _ucb.clone()    # actually not taking all historical intersections             
+                if default_fbeta:
+                    filter_beta = beta
+                
+                _filter_lcb, _filter_ucb = beta_CI(lcb, ucb, filter_beta)
+                ucb_filter = _filter_ucb >= _filter_lcb.max()
+                filter_ratio = ucb_filter.sum()/x_tensor.shape[0]
+                _minimum_pick = 10
+                if sum(ucb_filter[observed==1]) <= _minimum_pick:
+                    _, indices = torch.topk(ucb[observed==1], min(_minimum_pick, data_size))
+                    for idx in indices:
+                        ucb_filter[util_array[[observed==1]][idx]] = 1
+                observed_unfiltered = np.min([observed, ucb_filter.numpy()], axis=0)      # observed and not filtered outs
+                init_x = x_tensor[observed_unfiltered==1]
+                init_y = y_tensor[observed_unfiltered==1]
+
+                # global GP                
+                sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr, spectrum_norm=spectrum_norm, low_dim=low_dim,
+                                    n_init=n_init,  train_iter=train_times, regularize=regularize, dynamic_weight=False,  retrain_nn=True,
+                                    max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y)
+
+                _roi_ucb = _ucb
+                _roi_lcb, _roi_ucb = sim_dkbo.dkl.CI(x_tensor)
+                # if ci_intersection:
+                if not (default_beta): # only for plot & intersection
+                    _roi_beta = min(1e2, max(1e-2, ucb.max()/_roi_ucb.max()) )
+                else:
+                    _roi_beta = (2 * np.log((x_tensor[ucb_filter].shape[0] * (np.pi * (iter + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
+                _roi_lcb_scaled, _roi_ucb_scaled = beta_CI(_roi_lcb, _roi_ucb, _roi_beta)
+                
+                
+                # intersection of ROI CI
+                max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = beta_CI(lcb[ucb_filter], ucb[ucb_filter], _roi_beta)
+                _lcb_scaling_factor, _ucb_scaling_factor = max_test_x_lcb[ucb_filter].max()/ _roi_lcb_scaled[ucb_filter].max(), min_test_x_ucb[ucb_filter].max() / _roi_ucb_scaled[ucb_filter].max()
+                _max_test_x_lcb, _min_test_x_ucb = torch.max(max_test_x_lcb, _roi_lcb_scaled * _lcb_scaling_factor), torch.min(min_test_x_ucb, _roi_ucb_scaled * _ucb_scaling_factor) 
+                max_test_x_lcb[ucb_filter], min_test_x_ucb[ucb_filter] = _max_test_x_lcb[ucb_filter], _min_test_x_ucb[ucb_filter]
+                
+                query_num = min(filter_interval, n_iter-iter)
+                _roi_beta_passed_in = _roi_beta  if not (default_beta) else 0 # allow it to calculate internal ROI_beta
+                sim_dkbo.query(n_iter=query_num, acq=acq, study_ucb=False, study_interval=10, study_res_path=save_path,  if_tqdm=verbose,
+                                ci_intersection=ci_intersection, max_test_x_lcb=max_test_x_lcb[ucb_filter], min_test_x_ucb=min_test_x_ucb[ucb_filter], beta=_roi_beta_passed_in)
+
+                # update records
+                _step_size = min(iter+filter_interval, n_iter)
+                reg_record[rep, iter:_step_size] = sim_dkbo.regret[-_step_size:]
+                # # update interval
+                # max_LUCB_interval_record[rep:, 0, iter:_step_size] = (_ucb.max() - _lcb.max()).numpy()
+                # max_LUCB_interval_record[rep:, 1, iter:_step_size] = (_roi_ucb_scaled[ucb_filter].max() - _roi_lcb_scaled[ucb_filter].max()).numpy()
+                # max_LUCB_interval_record[rep:, 2, iter:_step_size] = (min_test_x_ucb[ucb_filter].max() - max_test_x_lcb[ucb_filter].max()).numpy()
+
+                # early stop
+                if reg_record[rep, :_step_size].min() < 1e-16:
+                    break
+
+                # iterator.set_postfix(loss=reg_record[rep, :_step_size].min())
+                iterator.set_postfix({'beta': beta, 'fbeta': filter_beta, "roi_beta": _roi_beta, "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio, "Filter Gap": _filter_ucb.min() - _filter_lcb.max()})
+
+                ucb_filtered_idx = util_array[ucb_filter]
+                observed[ucb_filtered_idx[sim_dkbo.observed==1]] = 1
+
+                # update ucb for filtering
+                _dkl = DKL(x_tensor[observed==1], y_tensor[observed==1].squeeze() if sum(observed) > 1 else y_tensor[observed==1],  
+                            n_iter=train_times, low_dim=low_dim, pretrained_nn=ae, retrain_nn=retrain_nn, lr=lr, spectrum_norm=spectrum_norm)
+
+                
+                lcb, ucb = _dkl.CI(x_tensor)
+
+    for rep in range(n_repeat):
+        reg_record[rep] = np.minimum.accumulate(reg_record[rep])
+    reg_output_record = reg_record.mean(axis=0)
+    
+    beta = 0 if default_beta else beta # for record
+    if plot_result:
+        # regret
+        fig = plt.figure()
+        plt.plot(reg_output_record)
+        plt.ylabel("regret")
+        plt.xlabel("Iteration")
+        plt.title(f'simple regret for {name}')
+        _path = f"{save_path}/TruVAR-{name}-B{beta}-FB{filter_beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        plt.savefig(f"{_path}.png")
+        # interval
+        fig = plt.figure()
+        # max_LUCB_interval_record_output = max_LUCB_interval_record.mean(axis=0)
+        # plt.plot(max_LUCB_interval_record_output[0,:], label="Global")
+        # plt.plot(max_LUCB_interval_record_output[1,:], label="ROI")
+        # plt.plot(max_LUCB_interval_record_output[2,:], label="Intersection")
+        # plt.ylabel("Interval")
+        # plt.xlabel("Iteration")
+        # plt.legend()
+        # plt.title(f'Interval for {name}')
+        # _path = f"{save_path}/TruVAR-{name}-interval-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        # plt.savefig(f"{_path}.png")
+        plt.close()
+        # plt.show()
+
+    if save_result:
+        assert not (save_path is None)
+        save_res(save_path=save_path, name=f"{name}-B{beta}-FB{filter_beta}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+                init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
+
+        # save_res(save_path=save_path, name=f"{name}-B{beta}-FB{filter_beta}-interval", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+                # init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
+
+    if return_result:
+        return reg_record
+    else:
+        return _dkl, sim_dkbo
