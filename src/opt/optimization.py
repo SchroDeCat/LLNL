@@ -614,7 +614,7 @@ def truvar(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, lo
 
                 # global GP                
                 sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr, spectrum_norm=spectrum_norm, low_dim=low_dim,
-                                    n_init=n_init,  train_iter=train_times, regularize=regularize, dynamic_weight=False,  retrain_nn=True,
+                                    n_init=n_init,  train_iter=train_times, regularize=False, dynamic_weight=False,  retrain_nn=True,
                                     max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y)
 
                 _roi_ucb = _ucb

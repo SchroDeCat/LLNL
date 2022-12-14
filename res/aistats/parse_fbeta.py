@@ -42,7 +42,7 @@ for acq in acqs:
 
         n_iter = res.shape[1]
         n_repeat = res.shape[0]
-        CI = 1
+        CI = 0.5
         sqrt_n = np.sqrt(int(n_repeat))
         coef = CI /sqrt_n
         _mean = res[:,:].mean(axis=0)
@@ -69,7 +69,7 @@ for acq in acqs:
             if record.startswith("nano") and 'Lin' in record and "ici" in record:
                 print(f"{record:<40}\t \t\t{res_collect['_mean'][-1]:.2f}\pm {res_collect['_sterr'][-1]:.2f}")
                 
-                ax.plot(res_collect['_mean'], label=record[-5:])
+                ax.plot(res_collect['_mean'], label=r"$\beta^{\frac{1}{2}}_{T}$="+record[-3:])
                 ax.fill_between(np.arange(res_collect['_mean'].shape[0]), res_collect['_mean'] - res_collect['_sterr'], 
                                 res_collect['_mean'] + res_collect['_sterr'], alpha=0.3)
             # ax.plot(RES_num[method][:,:n_iter].mean(axis=0), label=method)
@@ -83,7 +83,7 @@ for acq in acqs:
     ax.set_ylabel("Simple Regret",  fontsize=fontsize)
     ax.tick_params(axis='both', which='major', labelsize=fontsize)
     handles, labels = ax.get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper center', ncol=int(np.ceil(len(labels))), prop={'size': fontsize})
+    fig.legend(handles, labels, loc='upper center', ncol=int(np.ceil(len(labels))//2), prop={'size': fontsize})
     plt.tight_layout()
     plt.savefig(f"fbeta.png")
     plt.savefig(f"fbeta.pdf")

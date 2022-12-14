@@ -149,6 +149,7 @@ class DKL():
                     covar_x = self.covar_module(self.projected_x)
                     return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
     
+        self.GPRegressionModel = GPRegressionModel
         self.model = GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor)
         if low_dim:
             self.model.covar_module.base_kernel.outputscale = self.output_scale
@@ -376,6 +377,7 @@ class DKL():
         """
         Maximize acquisition function to find next point to query
         """
+        # print("enter next point")
         # clear cache
         self.model.train()
         self.likelihood.train()
@@ -416,6 +418,27 @@ class DKL():
                 self.acq_val = upper - lower
             elif acq.lower() == 'lcb':
                 self.acq_val = -lower            
+        elif acq.lower() == 'truvar':
+            # print("enter next point truvar")
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                observed_pred = self.likelihood(self.model(test_x))
+                lower, upper = observed_pred.confidence_region()
+                lower, upper = beta_CI(lower, upper, beta)
+                pred_mean = (lower + upper) / 2
+
+            self.acq_val = torch.zeros(test_x.size(0))
+            for idx in range(test_x.size(0)):
+                tmp_x = torch.cat([self.train_x, test_x[idx].reshape([1,-1])], dim=0)
+                tmp_y = torch.cat([self.train_y, pred_mean[idx].reshape([1,])])
+                _tmp_model = self.GPRegressionModel(tmp_x, tmp_y, self.likelihood, self.feature_extractor).eval()
+                with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                    _tmp_observed_pred = self.likelihood(_tmp_model(test_x))
+                    _tmp_lower, _tmp_upper = _tmp_observed_pred.confidence_region()
+                    _tmp_lower, _tmp_upper = beta_CI(_tmp_lower, _tmp_upper, beta)
+                self.acq_val[idx] = torch.sum(_tmp_lower - lower) + torch.sum(upper - _tmp_upper)
+            # print("acq value", self.acq_val.size(), self.acq_val)
+    
+
         else:
             raise NotImplementedError(f"acq {acq} not implemented")
 
