@@ -133,6 +133,9 @@ dmypy.json
 /data
 /tmp
 # /res
+plot_lamcts.py
+/res/illustration
+/res/turboM
 /res/visualization
 /res/batch
 .vscode
