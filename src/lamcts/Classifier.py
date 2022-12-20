@@ -55,7 +55,10 @@ class Classifier():
     def is_splittable_svm(self):
         plabel = self.learn_clusters()
         self.learn_boundary(plabel)
-        svm_label = self.svm.predict( self.X )
+        try:
+            svm_label = self.svm.predict( self.X )
+        except:
+            return False
         if len( np.unique(svm_label) ) == 1:
             return False
         else:
@@ -305,7 +308,7 @@ class Classifier():
             else:
                 return final_cands
 
-    def propose_samples_dkbo(self, dataset=None, path=None, num_samples:int=1, samples=None, pretrained_nn=None, func=None):
+    def propose_samples_dkbo(self, dataset=None, path=None, num_samples:int=1, samples=None, pretrained_nn=None, func=None, high_dim=False):
         """dkbo subroutine"""
         assert path is not None and len(path) >= 0
         assert samples is not None and len(samples) > 0
@@ -316,8 +319,12 @@ class Classifier():
         init_y = torch.from_numpy(np.array([sample[1] for sample in samples])).float().reshape([-1,1])
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-2,
-                                    n_init=len(samples),  train_iter=10, regularize=False, dynamic_weight=False, 
+            # sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-2,
+                                    # n_init=len(samples),  train_iter=10, regularize=False, dynamic_weight=False, 
+                                    # max=y_tensor.max(), pretrained_nn=pretrained_nn, verbose=False, init_x=init_x, init_y=init_y)
+            # print(f"hd, {high_dim}")
+            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-6,
+                                    n_init=len(samples),  train_iter=100, regularize=False, dynamic_weight=False, low_dim= not high_dim,
                                     max=y_tensor.max(), pretrained_nn=pretrained_nn, verbose=False, init_x=init_x, init_y=init_y)
             sim_dkbo.query(n_iter=num_samples, acq='ts', study_ucb=False, study_interval=10, study_res_path=None, if_tqdm=False)
         return sim_dkbo.init_x[-num_samples:].tolist(), sim_dkbo.init_y[-num_samples:].tolist()
@@ -431,8 +438,9 @@ class Classifier():
     def learn_boundary(self, plabel):
         assert len(plabel) == len(self.X)
         # print(np.unique(plabel))
-        assert np.unique(plabel).shape[0] > 1
-        self.svm.fit(self.X, plabel)
+        if np.unique(plabel).shape[0] > 1:
+            # plabel[-plabel.shape[0]//2] = 1
+            self.svm.fit(self.X, plabel)
         
     def learn_clusters(self):
         assert len(self.samples) >= 2, "samples must > 0"
@@ -442,9 +450,17 @@ class Classifier():
         
         tmp = np.concatenate( (self.X, self.fX.reshape([-1, 1]) ), axis = 1 )
         assert tmp.shape[0] == self.fX.shape[0]
+        assert tmp.shape[0] >=1
         
-        self.kmean  = self.kmean.fit(tmp)
-        plabel      = self.kmean.predict( tmp )
+        try:
+            # print("kmeans")
+            self.kmean  = self.kmean.fit(tmp)
+            plabel      = self.kmean.predict( tmp )
+        except Exception as e:
+            # print("inner catch", e)
+            # avoid kmeans crash
+            plabel      = np.zeros(tmp.shape[0])
+            plabel[-tmp.shape[0]//2]  = 1
         
         # the 0-1 labels in kmean can be different from the actual
         # flip the label is not consistent

@@ -132,5 +132,16 @@ dmypy.json
 # sefl-defined
 /data
 /tmp
-/res
+# /res
+plot_lamcts.py
+/res/illustration
+/res/turboM
+/res/visualization
+/res/batch
+.vscode
 .DS_Store
+*.png
+*.eps
+*.pt
+*.npy
+*.zip

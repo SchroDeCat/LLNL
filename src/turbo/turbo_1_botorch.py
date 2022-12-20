@@ -1,6 +1,7 @@
 import os
 import math
 from dataclasses import dataclass
+from random import random
 
 import torch
 from botorch.acquisition import qExpectedImprovement
@@ -51,6 +52,7 @@ class TurboState:
 class TuRBO():
     def __init__(self, train_x, train_y, n_init:int=10, acqf="ts", batch_size = 1, verbose=True, 
                     num_restarts=2, raw_samples = 512, discrete=True, pretrained_nn=None, train_iter=10, learning_rate=1e-2):
+                
         def obj_func(pts):
             diff = torch.abs(train_x[:, :pts.size(0)] - pts)
             index = torch.argmin(torch.sum(diff, dim=1))
@@ -58,6 +60,7 @@ class TuRBO():
         self.maximum = train_y.max()
         self.dim = train_x.size(1)
         self.training_iterations = train_iter
+        # print("train iter", self.training_iterations)
         self.lr = learning_rate
         self.obj_func = obj_func
         self.test_x = train_x if not discrete else train_x.float()
@@ -67,6 +70,7 @@ class TuRBO():
         self.Y_turbo = torch.tensor(
             [self.obj_func(x) for x in self.X_turbo], dtype=dtype, device=device
         ).unsqueeze(-1)
+        # print(f"init max {self.Y_turbo.max()}")
         self.batch_size = batch_size
         self.state = TurboState(self.dim, batch_size=batch_size)
         self.acqf = acqf
@@ -92,9 +96,8 @@ class TuRBO():
                 gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
                 num_dims=self.dim, grid_size=10)
             # self.covar_module = gpytorch.kernels.LinearKernel()
-   
     
-    def opt(self, max_iter:int=100):
+    def opt(self, max_iter:int=100, low_dim:bool=True):
         low_dim = False
         # print(self.verbose)
         iterator = tqdm(range(max_iter)) if self.verbose else range(max_iter)
@@ -107,26 +110,40 @@ class TuRBO():
             # print(f"x {self.X_turbo} y {self.Y_turbo}")
             self.train_Y = (self.Y_turbo - self.Y_turbo.mean()) / self.Y_turbo.std()
             # print(f"x {self.X_turbo} y {self.train_Y}")
+            def add_spectrum_norm(module, normalize=False):
+                if normalize:
+                    return torch.nn.utils.parametrizations.spectral_norm(module)
+                else:
+                    return module
+
             class LargeFeatureExtractor(torch.nn.Sequential):
                 def __init__(self, data_dim):
                     super(LargeFeatureExtractor, self).__init__()
-                    self.add_module('linear1', torch.nn.Linear(data_dim, 1000))
+                    self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
                     self.add_module('relu1', torch.nn.ReLU())
-                    self.add_module('linear2', torch.nn.Linear(1000, 500))
+                    self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
                     self.add_module('relu2', torch.nn.ReLU())
-                    self.add_module('linear3', torch.nn.Linear(500, 50))
+                    self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
                     # test if using higher dimensions could be better
-                    self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4', torch.nn.Linear(50, 1))
+                    if low_dim:
+                        self.add_module('relu3', torch.nn.ReLU())
+                        self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
+                    else:
+                        self.add_module('relu3', torch.nn.ReLU())
+                        self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
 
             class GPRegressionModel(gpytorch.models.ExactGP):
                     def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
                         super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
                         self.feature_extractor = gp_feature_extractor
-                        self.mean_module = gpytorch.means.ConstantMean()
-                        self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
-                            num_dims=1, grid_size=100)
+                        self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                        if low_dim:
+                            self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+                                                                num_dims=1, grid_size=100)
+                                # outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
+                        else:
+                            self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
 
                         # This module will scale the NN features so that they're nice values
                         self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
@@ -152,6 +169,7 @@ class TuRBO():
             # Do the fitting and acquisition function optimization inside the Cholesky context
             with gpytorch.settings.max_cholesky_size(max_cholesky_size):
                 # Fit the model
+                # print('discrete', self.discrete)
                 if not self.discrete:
                     fit_gpytorch_model(self.mll)
                 else:
@@ -181,6 +199,7 @@ class TuRBO():
                             iterator.set_postfix(loss=self.loss.item())
                     
                     # train(self.verbose)
+                    # print("verbose", self.verbose)
                     train(verbose=False)
                 # iterator.set_description(f'ML (loss={self.loss:.4})')
             
@@ -207,8 +226,7 @@ class TuRBO():
                 # )
                 iterator.set_postfix_str(f"({len(self.X_turbo)}) Regret: {self.maximum - self.state.best_value:.2e}, TR length: {self.state.length:.2e}")
             self.regret = self.maximum - np.maximum.accumulate(self.Y_turbo)
-            
-    
+              
     def update_state(self,):
         state=self.state
         Y_next=self.Y_next
@@ -307,7 +325,9 @@ class TuRBO():
         self.likelihood.eval()
         acq=self.acqf
 
-        test_x = self.test_x.to(device)
+        
+        random_filter = np.random.choice(100, self.test_x.shape[0])
+        test_x = self.test_x[random_filter].to(device)
 
         if acq.lower() == "ts":
             if method.lower() == "love":
@@ -337,7 +357,7 @@ class TuRBO():
         max_pts = torch.argmax(self.acq_val)
         candidate = test_x[max_pts]
         if return_idx:
-            return max_pts
+            return random_filter[max_pts]
         else:
             return candidate
 

@@ -37,30 +37,36 @@ if __name__ == "__main__":
     # parse the cli
     cli_parser = argparse.ArgumentParser(description="configuration of mf test")
     cli_parser.add_argument("--name", nargs='?', default="test", type=str, help="name of experiment",)
-    cli_parser.add_argument("--aedir", nargs='?', default="./tmp", type=str, help="directory of the pretrained Autoencoder",)
+    cli_parser.add_argument("--aedir", nargs='?', default=None, type=str, help="directory of the pretrained Autoencoder",)
     cli_parser.add_argument("--subdir", nargs='?', default="./res", type=str, help="directory to store the scripts and results",)
     cli_parser.add_argument("--datadir", nargs='?', default="./data", type=str, help="directory of the test datasets")
     cli_parser.add_argument("-a",  action="store_true", default=False, help="flag of if retrain AE")
     cli_parser.add_argument("-v",  action="store_true", default=False, help="flag of if verbose")
     cli_parser.add_argument("-f",  action="store_true", default=False, help="flag of if using fixed seed")
-    # cli_parser.add_argument("-r",  action="store_true", default=False, help="flag of if using regularization")
+    cli_parser.add_argument("-r",  action="store_true", default=False, help="flag of if using regularization")
     # cli_parser.add_argument("-d",  action="store_true", default=False, help="flag of if using dynamic weighting")
     cli_parser.add_argument("-p",  action="store_true", default=False, help="flag of if plotting result")
     cli_parser.add_argument("-s",  action="store_true", default=False, help="flag of if storing result")
     cli_parser.add_argument("-n", action="store_true", default=False, help="flag of if negate the obj value to maximize")
     cli_parser.add_argument("-o", action="store_true", default=False, help="if filtering the space")
+    cli_parser.add_argument("--high_dim", action="store_true", default=False, help="if using high dim latent space")
     cli_parser.add_argument("--learning_rate", nargs='?', default=2, type=int, help="rank of the learning rate")
     # cli_parser.add_argument("--rho", nargs='?', default=4, type=int, help="neg rank of the rho")
     # cli_parser.add_argument("--Lambda", nargs='?', default=0, type=int, help="neg rank of the lambda")
     # cli_parser.add_argument("--n_neighbor", nargs='?', default=50, type=int, help="number of neighbors used to regularize")
     cli_parser.add_argument("--init_num", nargs='?', default=10, type=int, help="number of initial random points")
+    cli_parser.add_argument("--beta", nargs='?', default=2, type=float, help="confidence factor")
+    cli_parser.add_argument("--fbeta", nargs='?', default=2, type=float, help="filtering factor")
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
+
     # cli_parser.add_argument("--train_interval", nargs='?', default=1, type=int, help="retrain interval")
     
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
     cli_parser.add_argument("--filter_interval", nargs='?', default=10, type=int, help="filtering interval")
+    cli_parser.add_argument("--intersection", action="store_false", default=True, help="if using CI's intersection")
+    cli_parser.add_argument("--return_model", action="store_true", default=False, help="if returning models")
     
     
     cli_args = cli_parser.parse_args()
@@ -89,23 +95,46 @@ if __name__ == "__main__":
     fix_seed = cli_args.f
     lr_rank = -cli_args.learning_rate
     learning_rate = 10 ** lr_rank
+    low_dim = not cli_args.high_dim
     pretrained = not (cli_args.aedir is None)
 
     # pretrain AE
     if not (cli_args.aedir is None) and cli_args.a:
         ae = AE(scaled_input_tensor, lr=1e-3)
-        ae.train_ae(epochs=100, batch_size=200, verbose=True)
+        # print(scaled_input_tensor.shape)
+        ae.train_ae(epochs=10, batch_size=200, verbose=True)
         torch.save(ae.state_dict(), cli_args.aedir)
         if cli_args.v:
             print(f"pretrained ae stored in {cli_args.aedir}")
 
 
-    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed}")
+    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim} CI intersection {cli_args.intersection} verbose={verbose}")
     if cli_args.o:
-        ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, 
-                        n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
-                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
+        res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta, regularize=cli_args.r,   ci_intersection=cli_args.intersection,
+                        n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times, filter_beta=cli_args.fbeta,
+                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=not cli_args.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
     else:
-        pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, 
+        pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta,
                         n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_iter=cli_args.train_times,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir,)
+
+
+    if cli_args.return_model:
+        if cli_args.o:
+            dk, sim_dk_ae = res
+            dk_upper, dk_lower = dk.CI(scaled_input_tensor)
+            dk_mean = (dk_upper + dk_lower)/2
+            roi_upper, roi_lower = sim_dk_ae.dkl.CI(scaled_input_tensor)
+            roi_mean = (roi_upper + roi_lower )/2
+            print(scaled_input_tensor[:,0].shape, torch.unique(scaled_input_tensor[:,0]).shape)
+            plt.figure()
+            plt.scatter(scaled_input_tensor[:,0], dk_upper, s=2, label="Global UCB")
+            plt.scatter(scaled_input_tensor[:,0], dk_lower,  s=2,label="Global LCB")
+            plt.scatter(scaled_input_tensor[:,0], scaled_input_tensor[:,-1], s=2, label="Objective")
+            plt.scatter(scaled_input_tensor[:,0], dk_mean, s=2, label="Global Predicted Mean")
+            plt.scatter(scaled_input_tensor[:,0], roi_upper,  s=2, label="ROI UCB")
+            plt.scatter(scaled_input_tensor[:,0], roi_lower,  s=2, label="ROI LCB")
+            plt.scatter(scaled_input_tensor[:,0], roi_mean, s=2, label="ROI Predicted Mean")
+            plt.legend()
+            plt.show()
+            plt.savefig(f"1DEG-lr{learning_rate}-beta{cli_args.beta}-train{cli_args.train_times}.png")
