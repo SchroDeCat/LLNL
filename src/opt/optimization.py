@@ -99,7 +99,7 @@ def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_ite
         pass
 
 def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True, beta=2,
-                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, study_partition=STUDY_PARTITION):
+                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, exact_gp=False, study_partition=STUDY_PARTITION):
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
 
@@ -128,7 +128,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
                 print("DKBO")
             sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
                                 n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
-                                max=max_val, pretrained_nn=ae, verbose=verbose)
+                                max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp)
             sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, beta=beta, study_res_path=save_path, if_tqdm=verbose)
             reg_record[rep, :] = sim_dkbo.regret
 
@@ -145,13 +145,13 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         plt.ylabel("Regret")
         plt.title("DKBO performance")
         # plt.show()
-        _path = f"{save_path}/Pure-DK-{name}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}"
+        _path = f"{save_path}/Pure-DK-{name}{'-Exact' if exact_gp else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}"
         plt.savefig(f"{_path}.png")
         plt.close()
 
     if save_result:
         assert not (save_path is None)
-        _path = f"{save_path}/Pure-DK-{name}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}.npy"
+        _path = f"{save_path}/Pure-DK-{name}{'-Exact' if exact_gp else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}.npy"
         np.save(_path, reg_record)
        
         # save_res(save_path=save_path, name=name if low_dim else name+"-hd", res=reg_record, n_repeat=n_repeat, num_GP=1, n_iter=n_init, train_iter=train_iter,
@@ -164,7 +164,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
 def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, regularize=True, low_dim=True, spectrum_norm=False, 
                    n_iter=40, filter_interval=1, acq="ts", ci_intersection=True, verbose=True, lr=1e-2, name="test", return_result=True, retrain_nn=True,
                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION, _minimum_pick = 10, 
-                   _delta = 0.2, filter_beta=.05):
+                   _delta = 0.2, filter_beta=.05, exact_gp=False):
     # print(ucb_strategy)
     name = name if low_dim else name+'-hd'
     max_val = y_tensor.max()
@@ -205,7 +205,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
             observed[:n_init] = 1
             init_x = x_tensor[:n_init]
             init_y = y_tensor[:n_init]
-            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr, spectrum_norm=spectrum_norm)
+            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr, spectrum_norm=spectrum_norm, exact_gp=exact_gp)
             if regularize:
                 _dkl.train_model_kneighbor_collision()
             else:
@@ -266,7 +266,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 
                 sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr, spectrum_norm=spectrum_norm, low_dim=low_dim,
                                     n_init=n_init,  train_iter=train_times, regularize=regularize, dynamic_weight=False,  retrain_nn=True,
-                                    max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y)
+                                    max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y, exact_gp=exact_gp)
 
                 _roi_ucb = _ucb
                 _roi_lcb, _roi_ucb = sim_dkbo.dkl.CI(x_tensor)
@@ -359,7 +359,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 # _ae.train_ae(epochs=train_times, batch_size=200, verbose=True)
                 # print("Global GP: ", y_tensor[observed==1].squeeze().size(), f"n_iter={train_times}, low_dim={low_dim},retrain_nn={retrain_nn}, lr={lr}, spectrum_norm={spectrum_norm} regularize {regularize}")
                 _dkl = DKL(x_tensor[observed==1], y_tensor[observed==1].squeeze() if sum(observed) > 1 else y_tensor[observed==1],  
-                            n_iter=train_times, low_dim=low_dim, pretrained_nn=ae, retrain_nn=retrain_nn, lr=lr, spectrum_norm=spectrum_norm)
+                            n_iter=train_times, low_dim=low_dim, pretrained_nn=ae, retrain_nn=retrain_nn, lr=lr, spectrum_norm=spectrum_norm,
+                            exact_gp=exact_gp)
                 # _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
                             # n_iter=train_times, low_dim=True)
                 # 
@@ -383,7 +384,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/Filter-{name}-B{beta}-FB{filter_beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        _path = f"{save_path}/Filter{'-Exact' if exact_gp else ''}-{name}-B{beta}-FB{filter_beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
         plt.savefig(f"{_path}.png")
         # interval
         fig = plt.figure()
@@ -395,17 +396,17 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
         plt.xlabel("Iteration")
         plt.legend()
         plt.title(f'Interval for {name}')
-        _path = f"{save_path}/Filter-{name}-interval-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        _path = f"{save_path}/Filter{'-Exact' if exact_gp else ''}-{name}-interval-B{beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
         plt.savefig(f"{_path}.png")
         plt.close()
         # plt.show()
 
     if save_result:
         assert not (save_path is None)
-        save_res(save_path=save_path, name=f"{name}-B{beta}-FB{filter_beta}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"{name}{'-Exact' if exact_gp else ''}-B{beta}-FB{filter_beta}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
 
-        save_res(save_path=save_path, name=f"{name}-B{beta}-FB{filter_beta}-interval", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"{name}{'-Exact' if exact_gp else ''}-B{beta}-FB{filter_beta}-interval", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
 
 

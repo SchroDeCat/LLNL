@@ -36,7 +36,7 @@ class DK_BO_AE():
     """
     def __init__(self, train_x, train_y, n_init:int=10, lr=1e-6, train_iter:int=10, regularize=True, spectrum_norm=False,
                 dynamic_weight=False, verbose=False, max=None, robust_scaling=True, pretrained_nn=None, low_dim=True,
-                record_loss=False, retrain_nn=True, **kwargs):
+                record_loss=False, retrain_nn=True, exact_gp=False, **kwargs):
         # scale input
         ScalerClass = RobustScaler if robust_scaling else StandardScaler
         self.scaler = ScalerClass().fit(train_x)
@@ -58,18 +58,20 @@ class DK_BO_AE():
         self.init_x = kwargs.get("init_x", self.train_x[:n_init])
         self.init_y = kwargs.get("init_y", self.train_y[:n_init])
         self.spectrum_norm = spectrum_norm
+        self.exact = exact_gp # exact GP overide
         # print(f"init_y_max {self.init_y.max()}")
         self.observed = np.zeros(self.train_x.size(0)).astype("int")
         # self.observed[:n_init] = True
         self.pretrained_nn = pretrained_nn
-        self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, pretrained_nn=self.pretrained_nn, retrain_nn=retrain_nn, spectrum_norm=spectrum_norm)
+        self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, 
+                        pretrained_nn=self.pretrained_nn, retrain_nn=retrain_nn, spectrum_norm=spectrum_norm, exact_gp=exact_gp)
 
         # print("ROI GP: ", self.init_y.size(), f"n_iter={train_iter}, low_dim={low_dim}, retrain_nn={self.dkl.retrain_nn} lr={lr}{self.dkl.lr}, spectrum_norm={spectrum_norm} regularize {regularize}")
         self.record_loss = record_loss
 
         if self.record_loss:
             assert not (pretrained_nn is None)
-            self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=spectrum_norm)
+            self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=spectrum_norm, exact_gp=exact_gp)
             self.loss_record = {"DK-AE":[], "DK":[]}
         self.cuda = torch.cuda.is_available()
 
@@ -138,9 +140,9 @@ class DK_BO_AE():
 
             # retrain
             self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, pretrained_nn=self.pretrained_nn, retrain_nn=self.retrain_nn,
-                                 spectrum_norm=self.spectrum_norm)
+                                 spectrum_norm=self.spectrum_norm, exact_gp=self.exact)
             if self.record_loss:
-                self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=self.spectrum_norm)
+                self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=self.spectrum_norm, exact_gp=self.exact)
             # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
             self.train()
             if self.record_loss:

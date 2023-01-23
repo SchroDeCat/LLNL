@@ -33,11 +33,12 @@ from src.opt import ol_partition_dkbo, pure_dkbo, ol_filter_dkbo
 # from src.utils import 
 
 acq = ['ts', 'ci', 'ucb']
+EXACT=True # if globally using exact gp
 
 # parse the cli
 class Configuration():
     def __init__(self, name:str, ae_dir:str, data_dir:str, run_times:int=1, horizon:int=10, acq:str='ci', fbeta=0.2, train_time=10,
-        intersection=False, ballet=True, high_dim=False) -> None:
+        intersection=False, ballet=True, high_dim=False, exact_gp=EXACT) -> None:
         self.name   = name
         self.aedir  = f"./tmp/{ae_dir}"
         self.subdir = f"./res/aistats/{acq}"  
@@ -64,6 +65,7 @@ class Configuration():
         self.train_times=train_time
         self.learning_rate=4
         self.fbeta = fbeta
+        self.exact = exact_gp
 
 def plot_pure_dkbo(config):
     save_path = config.subdir
@@ -78,7 +80,7 @@ def plot_pure_dkbo(config):
     n_iter = config.opt_horizon
 
     
-    _path = f"{save_path}/Pure-DK-{name}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}.npy"
+    _path = f"{save_path}/Pure-DK-{name}{'-Exact' if config.exact else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}.npy"
     reg_record = np.load(_path)
     reg_output_record = reg_record.mean(axis=0)
 
@@ -93,7 +95,7 @@ def plot_pure_dkbo(config):
     plt.ylabel("Regret")
     plt.title("DKBO performance")
     # plt.show()
-    _path = f"{save_path}/Pure-DK-{name}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}"
+    _path = f"{save_path}/Pure-DK-{name}{'-Exact' if config.exact else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}"
     plt.savefig(f"{_path}.png")
     plt.close()
 
@@ -145,10 +147,10 @@ def process(config):
     if config.o:
         res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=config.init_num, n_repeat=config.run_times, low_dim=low_dim, beta=config.beta, regularize=config.r,   ci_intersection=config.intersection,
                         n_iter=config.opt_horizon, filter_interval=config.filter_interval, acq=config.acq_func, verbose=verbose, lr=learning_rate, name=config.name, train_times=config.train_times, filter_beta=config.fbeta,
-                        plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=not config.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir)
+                        plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=not config.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir, exact_gp=config.exact)
     else:
         pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=config.init_num, n_repeat=config.run_times, low_dim=low_dim, beta=config.beta,
-                        n_iter=config.opt_horizon, acq=config.acq_func, verbose=verbose, lr=learning_rate, name=config.name, train_iter=config.train_times,
+                        n_iter=config.opt_horizon, acq=config.acq_func, verbose=verbose, lr=learning_rate, name=config.name, train_iter=config.train_times, exact_gp=config.exact,
                         plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir,)
 
 

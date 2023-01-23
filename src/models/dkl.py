@@ -41,7 +41,8 @@ def beta_CI(lcb, ucb, beta):
 
 class DKL():
 
-    def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False, retrain_nn=True, spectrum_norm=False):
+    def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, 
+                 pretrained_nn=None, test_split=False, retrain_nn=True, spectrum_norm=False, exact_gp=False):
         self.training_iterations = n_iter
         self.lr = lr
         self.train_x = train_x
@@ -54,6 +55,7 @@ class DKL():
         self.test_split = test_split
         self.output_scale = output_scale
         self.retrain_nn = retrain_nn
+        self.exact = exact_gp # exact GP overide
         # self.cuda = False
         # split the dataset
         total_size = train_y.size(0)
@@ -151,9 +153,32 @@ class DKL():
                     mean_x = self.mean_module(self.projected_x)
                     covar_x = self.covar_module(self.projected_x)
                     return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-    
-        self.GPRegressionModel = GPRegressionModel
-        self.model = GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor)
+
+        class ExactGPRegressionModel(gpytorch.models.ExactGP):
+                def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
+                    '''
+                    Exact GP:
+                    Leave placeholder for gp_feature_extractor
+                    '''
+                    super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
+                    self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                    self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                        gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
+                        outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
+                        num_dims=1, grid_size=100)
+
+                    # This module will scale the NN features so that they're nice values
+                    self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
+
+                def forward(self, x):
+                    self.projected_x = self.scale_to_bounds(x)  # Make the values "nice"
+
+                    mean_x = self.mean_module(self.projected_x)
+                    covar_x = self.covar_module(self.projected_x)
+                    return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+        self.GPRegressionModel = GPRegressionModel if not self.exact else ExactGPRegressionModel
+        self.model = self.GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor)
         if low_dim:
             self.model.covar_module.base_kernel.outputscale = self.output_scale
 
@@ -177,7 +202,7 @@ class DKL():
             self._train_mae_record = np.zeros(self.training_iterations//record_interval)
 
         # Use the adam optimizer
-        if self.retrain_nn:
+        if self.retrain_nn and not self.exact:
             params = [
                 {'params': self.model.feature_extractor.parameters()},
                 {'params': self.model.covar_module.parameters()},
@@ -270,6 +295,8 @@ class DKL():
             return preds.mean.cpu()
 
     def latent_space(self, input_x):
+        if self.exact:
+            return input_x.cpu() if self.cuda else input_x
         if eval:
             self.model.eval()
             self.likelihood.eval()
@@ -291,12 +318,20 @@ class DKL():
 
         # Use the adam optimizer
 
-        self.optimizer = torch.optim.Adam([
-            {'params': self.model.feature_extractor.parameters()},
-            {'params': self.model.covar_module.parameters()},
-            {'params': self.model.mean_module.parameters()},
-            {'params': self.model.likelihood.parameters()},
-        ], lr=self.lr)
+        if self.exact:
+            _parameters = [
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        else:
+            _parameters = [
+                {'params': self.model.feature_extractor.parameters()},
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        self.optimizer = torch.optim.Adam(_parameters, lr=self.lr)
 
         # "Loss" for GPs - the marginal log likelihood
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
