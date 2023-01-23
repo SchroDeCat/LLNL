@@ -38,6 +38,7 @@ def beta_CI(lcb, ucb, beta):
     _lcb_scaled = (ucb - lcb) / 4 * (2-beta) + lcb
     return _lcb_scaled, _ucb_scaled
 
+
 class DKL():
 
     def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False, retrain_nn=True, spectrum_norm=False):
@@ -69,6 +70,7 @@ class DKL():
             self._y = self.test_y.clone()
             self._x_train = self.train_x.clone()
             self._y_train = self.train_y.clone()
+
 
         def add_spectrum_norm(module, normalize=spectrum_norm):
             if normalize:
@@ -115,6 +117,7 @@ class DKL():
                 else:
                     self.add_module('relu3', torch.nn.ReLU())
                     self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
+
 
         self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim)
         if not (pretrained_nn is None):
