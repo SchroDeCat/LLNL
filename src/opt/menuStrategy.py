@@ -45,10 +45,11 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler, RobustScaler
-from abag_model_development.models.active_learning.base_strategy import BaseStrategy, MenuStrategy
+# from abag_model_development.models.active_learning.base_strategy import BaseStrategy, MenuStrategy
 
 
-class DKBO_OLP(MenuStrategy):
+# class DKBO_OLP(MenuStrategy):
+class DKBO_OLP():
     '''
     DKBO-Online Partition inherting Menu Strategy
 

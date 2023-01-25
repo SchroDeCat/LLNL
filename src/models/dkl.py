@@ -160,18 +160,27 @@ class DKL():
                     Exact GP:
                     Leave placeholder for gp_feature_extractor
                     '''
-                    super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
+                    super(ExactGPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
+                    # self.mean_module = gpytorch.means.ZeroMean()
+                    if low_dim:
+                        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
+                    else:
+                        self.covar_module = gpytorch.kernels.LinearKernel(num_dims=train_x.size(-1))
                     self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
-                    self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                        gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
-                        outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
-                        num_dims=1, grid_size=100)
+                    # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                    #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+                    #     num_dims=train_x.size(-1), grid_size=1000)
+                    # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                    #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1),
+                    #     outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
+                    #     num_dims=train_x.size(-1), grid_size=100)
 
                     # This module will scale the NN features so that they're nice values
                     self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
 
                 def forward(self, x):
-                    self.projected_x = self.scale_to_bounds(x)  # Make the values "nice"
+                    self.projected_x = x
+                    # self.projected_x = self.scale_to_bounds(x)  # Make the values "nice"
 
                     mean_x = self.mean_module(self.projected_x)
                     covar_x = self.covar_module(self.projected_x)
@@ -236,10 +245,12 @@ class DKL():
                 # Get output from model
                 self.output = self.model(self.train_x)
                 # Calc loss and backprop derivatives
+                # print("loss", self.output.mean, self.train_y, self.loss_func)
                 self.loss = self.loss_func(self.output, self.train_y)
+                # print('backward')
                 self.loss.backward()
                 self.optimizer.step()
-
+                # print("record")
                 if record_mae and (i + 1) % record_interval == 0:
                     self.mae_record[i//record_interval] = self.predict(self._x, self._y, verbose=False)
                     if self.test_split:
@@ -255,7 +266,6 @@ class DKL():
                 elif verbose:
                     iterator.set_postfix(loss=self.loss.item())
                 # iterator.set_description(f'ML (loss={self.loss:.4})')
-
         train(verbose)
 
     def predict(self, test_x, test_y, verbose=True, return_pred=False):
