@@ -19,7 +19,17 @@ def plot_subfigure(ax, RES_num, name):
         coef = CI /sqrt_n
         RES_num[method][:,0] = init_regret
         RES_num[method] = np.minimum.accumulate(RES_num[method], axis=1)
-        ax.plot(RES_num[method].mean(axis=0), label=method, alpha=1.0 if method == "BALLET-ICI" else 0.6, lw=3 if method == "BALLET-ICI" else 2)
+        if method in ["BALLET-ICI"]:
+            _label = f"{method} (R+G)"
+        elif method in ["DKBO-AE"]:
+            _label = f"{method} (G)"
+        elif method in ["BALLET-RTS", "BALLET-RCI"]:
+            _label = f"{method} (R)"
+        elif method in ["LA-MCTS", "TuRBO-DK"]:
+            _label = f"{method} (R)"
+        else:
+            raise NotImplementedError(f"unknown method {method}")
+        ax.plot(RES_num[method].mean(axis=0), label=_label, alpha=1.0 if method == "BALLET-ICI" else 0.6, lw=3 if method == "BALLET-ICI" else 2)
         ax.fill_between(np.arange(n_iter), RES_num[method].mean(axis=0) - RES_num[method].std(axis=0) * coef, 
                         RES_num[method].mean(axis=0) + RES_num[method].std(axis=0) * coef, alpha=0.3)
     # ax.set_xlabel("Iteration", fontsize=fontsize)
@@ -112,7 +122,7 @@ handles, labels = ax.get_legend_handles_labels()
 plt.tight_layout()
 fig.legend(handles, labels, loc='upper center',bbox_to_anchor=(0.5, 1.05), ncol=len(labels), prop={'size': fontsize})
 plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.3, hspace=None)
-plt.savefig("aistats6.pdf", bbox_inches='tight')
-plt.savefig("aistats6.png", bbox_inches='tight')
+plt.savefig("icml_1.pdf", bbox_inches='tight')
+plt.savefig("icml_1.png", bbox_inches='tight')
 plt.close()
 # plt.show()

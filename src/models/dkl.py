@@ -433,6 +433,10 @@ class DKL():
         # Set into eval mode
         self.model.eval()
         self.likelihood.eval()
+        test_x_selection = None
+        if self.exact and test_x.size(0) > 1000:
+            test_x_selection = np.random.choice(test_x.size(0), 1000)
+            test_x = test_x[test_x_selection]
 
         if self.cuda:
           test_x = test_x.cuda()
@@ -454,7 +458,7 @@ class DKL():
                 raise NotImplementedError(f"sampling method {method} not implemented")
             self.acq_val = samples
 
-        elif acq.lower() in ["ucb", 'ci', 'lcb']:
+        elif acq.lower() in ["ucb", 'ci', 'lcb', 'rci']:
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
@@ -462,8 +466,10 @@ class DKL():
 
             if acq.lower() == 'ucb':
                 self.acq_val = upper
-            elif acq.lower() == 'ci':
+            elif acq.lower() in ['ci', 'rci']:
                 self.acq_val = upper - lower
+                if acq.lower == 'rci':
+                    self.acq_val[upper < lower.max()] = self.acq_val.min()
             elif acq.lower() == 'lcb':
                 self.acq_val = -lower            
         elif acq.lower() == 'truvar':
@@ -493,7 +499,10 @@ class DKL():
         max_pts = torch.argmax(self.acq_val)
         candidate = test_x[max_pts]
         if return_idx:
-            return max_pts
+            if test_x_selection is None:
+                return max_pts
+            else:
+                return test_x_selection[max_pts]
         else:
             return candidate
 
