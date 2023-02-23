@@ -26,7 +26,7 @@ import matplotlib as mpl
 import datetime
 import itertools
 import copy
-from ..models import DKL, AE
+from ..models import DKL, AE, beta_CI
 from ..utils import save_res, load_res, clustering_methods
 from .dkbo_olp import DK_BO_OLP, DK_BO_OLP_Batch
 from .dkbo_ae import DK_BO_AE
@@ -106,8 +106,15 @@ class DKBO_OLP():
             @abag_transform: boolean that indicates if we need to transform to abag closed loop
 
         '''
-
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        use_gpu = (
+            True if torch.cuda.is_available() or torch.backends.mps.is_available() else False
+        )
+        use_gpu = False # for current version
+        if use_gpu:
+            self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
+        else:
+            self.device = 'cpu'
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.partition_strategy = partition_strategy
         self.num_GP = num_GP
         self.acq = acq
@@ -116,7 +123,9 @@ class DKBO_OLP():
         self.ucb_strategy = ucb_strategy
         self.pretrained = pretrained
         self.ae_loc = ae_loc
-        super().__init__(name=name, model=None, train=train, iters=train_times)
+        # super().__init__(name=name, model=None, train=train, iters=train_times)
+        self.iters = train_times
+        self.train = train
         self.train_times = self.iters
         self.if_train = self.train
         self.abag_transform = abag_transform
@@ -183,22 +192,48 @@ class DKBO_OLP():
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             _observed_pred = self._dkl.likelihood(self._dkl.model(x_tensor.to(self.device)))
             _, ucb = _observed_pred.confidence_region()
-        self.cluster_id = clustering_methods(x_tensor, ucb.to('cpu'), self.num_GP, self.partition_strategy, 
+        if self.partition_strategy in ["kmeans-y"]:
+            self.cluster_id = clustering_methods(x_tensor, ucb.to('cpu'), self.num_GP, self.partition_strategy, 
                                         dkl=True, pretrained_nn=self.ae, train_iter=self.train_times)
-        self.cluster_id_init = self.cluster_id[self.observed==1]
+            self.cluster_id_init = self.cluster_id[self.observed==1]
 
-        init_x_list, init_y_list, test_x_list = [], [], []
-        self.cluster_filter_list, self.cluster_idx_list = [], []
-        for idx in range(self.num_GP):
-            cluster_filter = self.cluster_id == idx
-            cluster_filter[:self.n_init] = False # avoid querying the initial pts since it is not necessarily in X
-            if np.sum(cluster_filter) == 0:   # avoid empty class -- regress to single partition.
-                cluster_filter[self.n_init:] = True 
-            self.cluster_filter_list.append(cluster_filter)
-            self.cluster_idx_list.append(_util_array[cluster_filter])
-            test_x_list.append(x_tensor[cluster_filter])
-            init_x_list.append(self.init_x)
-            init_y_list.append(self.init_y.reshape([-1,1]))
+            init_x_list, init_y_list, test_x_list = [], [], []
+            self.cluster_filter_list, self.cluster_idx_list = [], []
+            for idx in range(self.num_GP):
+                cluster_filter = self.cluster_id == idx
+                cluster_filter[:self.n_init] = False # avoid querying the initial pts since it is not necessarily in X
+                if np.sum(cluster_filter) == 0:   # avoid empty class -- regress to single partition.
+                    cluster_filter[self.n_init:] = True 
+                self.cluster_filter_list.append(cluster_filter)
+                self.cluster_idx_list.append(_util_array[cluster_filter])
+                test_x_list.append(x_tensor[cluster_filter])
+                init_x_list.append(self.init_x)
+                init_y_list.append(self.init_y.reshape([-1,1]))
+
+        elif self.partition_strategy.lower() in ["ballet"]:
+            # Identify ROI as in BALLET
+            self.num_GP = 2 # override input parameter
+            lcb, ucb = self._dkl.CI(x_tensor.to(self.device))
+            _delta = kwargs.get("delta", 0.2)
+            _filter_beta = kwargs.get("filter_beta", 0.05)
+            _beta = (2 * np.log((x_tensor.shape[0] * (np.pi * (self.n_init + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
+            _filter_lcb, _filter_ucb = beta_CI(lcb, ucb, _filter_beta)
+            ucb_filter = _filter_ucb >= _filter_lcb.max()
+            _minimum_pick = min(kwargs.get("minimum_pick", 4), self.n_init)
+            if sum(ucb_filter[self.observed==1]) <= _minimum_pick:
+                _, indices = torch.topk(ucb[self.observed==1], min(_minimum_pick, _data_size))
+                for idx in indices:
+                    ucb_filter[_util_array[[self.observed==1]][idx]] = 1
+            observed_unfiltered = np.min([self.observed, ucb_filter.numpy()], axis=0)      # observed and not filtered outs
+            # two parition, one global, one ROI
+            self.cluster_filter_list = [np.ones(_data_size), ucb_filter]
+            self.cluster_idx_list = [_util_array, _util_array[ucb_filter]]
+            test_x_list = [x_tensor, x_tensor[ucb_filter==1]]
+            init_x_list = [self.init_x, x_tensor[observed_unfiltered==1]]
+            init_y_list = [self.init_y.reshape([-1,1]), self.init_y.reshape([-1,1])[observed_unfiltered[:self.n_init]==1]]
+
+        else:
+            raise NotImplementedError(f"{self.partition_strategy} Unknown")
 
         self.model = DK_BO_OLP_Batch(init_x_list, init_y_list, lr=self.lr, train_iter=self.train_times,
                         n_init=self.n_init, num_GP=self.num_GP, pretrained_nn=self.ae)

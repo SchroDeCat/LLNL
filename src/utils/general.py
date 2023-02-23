@@ -43,7 +43,7 @@ def _random_seed_gen(size:int=100):
 #     _lcb_scaled = (ucb - lcb) / 4 * (2-beta) + lcb
 #     return _lcb_scaled, _ucb_scaled
 
-def _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter, ucb_strategy, ci_intersection):
+def _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, cluster_interval, acq, lr, train_iter, ucb_strategy, ci_intersection=False):
     return f"{save_path}/OL-{name}-{init_strategy}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_iter}-US{ucb_strategy}{'-sec' if ci_intersection else ''}"
 
 def save_res(save_path, name, res, n_repeat=2, num_GP=2, n_iter=40, init_strategy:str="kmeans", cluster_interval:int=1, acq:str='ts', ucb_strategy="exact", lr:float=1e-3, train_iter:int=10, ci_intersection=True, verbose=True):

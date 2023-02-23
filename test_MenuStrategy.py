@@ -31,7 +31,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from src.models import AE
 from src.utils import save_res, _path, _random_seed_gen
-from src.opt import pure_dkbo, DKBO_OLP_MenuStrategy
+from src.opt import pure_dkbo, DKBO_OLP as DKBO_OLP_MenuStrategy
 
 def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, train_times=10, batch_size:int=5,
                     n_iter=40, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, ucb_strategy="exact",
@@ -64,7 +64,7 @@ def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_r
         iterator = tqdm.tqdm(range(0, n_iter, batch_size), desc=f"R {r}") if verbose else range(0, n_iter, batch_size)
 
         for t in iterator:
-            candidates_idx = _dkbo_olp_batch.select(x_tensor, i=0, k=batch_size)
+            candidates_idx, _, _, _ = _dkbo_olp_batch.select(x_tensor, i=0, k=batch_size)
             _x_query, y_query = x_tensor[candidates_idx], y_tensor[candidates_idx]
             _dkbo_olp_batch.update(X=_x_query, y=y_query)
             observed_y.extend([val.item() for val in y_query])
