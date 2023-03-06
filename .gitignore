@@ -135,3 +135,17 @@ dmypy.json
 /res
 .DS_Store
 exp_result/*
+# /res
+plot_lamcts.py
+/res/illustration
+/res/turboM
+/res/visualization
+/res/batch
+.vscode
+.DS_Store
+*.png
+*.eps
+*.pt
+*.npy
+*.zip
+*.pdf

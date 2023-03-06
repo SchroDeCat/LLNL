@@ -53,9 +53,10 @@ if __name__ == "__main__":
     cli_parser.add_argument("--init_num", nargs='?', default=10, type=int, help="number of initial random points")
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
-    # cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
+    cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
     cli_parser.add_argument("--batch-size", nargs="?", default=1, type=int,help="Batch size of each round of query")    
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
+    cli_parser.add_argument("--high_dim", action="store_true", default=False, help="if using high dim latent space")
     # cli_parser.add_argument("--clustering", nargs='?', default="kmeans-y", type=str, help="cluster strategy")
     # cli_parser.add_argument("--n_partition", nargs='?', default=2, type=int, help="number of partition")
     # cli_parser.add_argument("--ucb_strategy", nargs='?', default="max", type=str, help="strategy to combine ucbs")
@@ -132,8 +133,8 @@ if __name__ == "__main__":
                 torch.backends.cudnn.deterministic = True
 
 
-            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, pretrained_nn=ae)
-            t.opt(n_iter,)
+            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, train_iter=cli_args.train_times, pretrained_nn=ae)
+            t.opt(n_iter, low_dim = not cli_args.high_dim)
             reg_record[idx] = t.regret.squeeze()
 
     if cli_args.p:
@@ -141,12 +142,14 @@ if __name__ == "__main__":
 
 
     if cli_args.s:
-        np.save(f"{save_path}/turbo{'-bo' if not discrete else ''}-{name}-R{n_repeat}-T{n_iter}.npy", reg_record)
+        np.save(f"{save_path}/turbo{'-bo' if not discrete else ''}{'-hd' if cli_args.high_dim else ''}-{name}-R{n_repeat}-T{n_iter}.npy", reg_record)
 
     if cli_args.p:
+        plt.figure()
         plt.plot(reg_record.mean(axis=0))
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/turbo{'-bo' if not discrete else ''}-{name}-R{n_repeat}-T{n_iter}"
+        _path = f"{save_path}/turbo{'-bo' if not discrete else ''}{'-hd' if cli_args.high_dim else ''}-{name}-R{n_repeat}-T{n_iter}"
         plt.savefig(f"{_path}.png")
+        plt.close()

@@ -148,6 +148,7 @@ class MCTS:
         # init_points = latin_hypercube(self.ninits, self.dims)
         # init_points = from_unit_cube(init_points, self.lb, self.ub)
         init_points = self.dataset[:self.ninits,:-1]
+        # init_values = [self.func(sample)*-1 for sample in init_points]
         # print(f"init max {self.dataset[:self.ninits,-1].max()} {min([self.func(pts) for pts in init_points])}")
         
         for point in init_points:
@@ -265,16 +266,19 @@ class MCTS:
                 elif self.solver_type == 'dkbo':
                     samples, _ = leaf.propose_samples_dkbo(num_samples=1, path=path, dataset=self.dataset, 
                                         samples=self.samples, pretrained_nn=self.pretrained_nn, func=self.func)
+                elif self.solver_type == 'dkbo-hd':
+                    samples, _ = leaf.propose_samples_dkbo(num_samples=1, path=path, dataset=self.dataset, 
+                                        samples=self.samples, pretrained_nn=self.pretrained_nn, func=self.func, high_dim=True)
                     
                 else:
-                    raise Exception("solver not implemented")
+                    raise Exception(f"solver {self.solver_type} not implemented")
                 for idx in range(0, len(samples)):
                     if self.solver_type == 'bo':
                         value = self.collect_samples( samples[idx])
                     elif self.solver_type == 'turbo':
                         # print(samples[idx].shape, values[idx].shape)
                         value = self.collect_samples( samples[idx], values[idx] )
-                    elif self.solver_type == "dkbo":
+                    elif self.solver_type in ["dkbo", "dkbo-hd"]:
                         value = self.collect_samples( samples[idx])
                     else:
                         raise Exception("solver not implemented")

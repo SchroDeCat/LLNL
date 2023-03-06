@@ -1,3 +1,4 @@
+from code import interact
 import gpytorch
 import os
 import random
@@ -105,7 +106,7 @@ if __name__ == "__main__":
 
     print(f"Learning rate {learning_rate} Partition {cli_args.o} ucb strategy {cli_args.ucb_strategy}")
     if cli_args.o:
-        ol_partition_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, init_strategy=cli_args.clustering, n_init=cli_args.init_num, n_repeat=cli_args.run_times, num_GP=cli_args.n_partition, 
+        ol_partition_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, init_strategy=cli_args.clustering, n_init=cli_args.init_num, n_repeat=cli_args.run_times, num_GP=cli_args.n_partition,
                         n_iter=cli_args.opt_horizon, cluster_interval=cli_args.cluster_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir, ucb_strategy=cli_args.ucb_strategy)
     else:

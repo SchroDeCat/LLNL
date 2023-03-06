@@ -8,20 +8,22 @@ import tqdm
 # import math
 # import warnings
 import numpy as np
-# import matplotlib.pyplot as plt
-# import matplotlib as mpl
-# import datetime
-# import itertools
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import datetime
+import itertools
 
-# from sparsemax import Sparsemax
-# from scipy.stats import ttest_ind
-# from sklearn.cluster import MiniBatchKMeans, KMeans
-# from sklearn.metrics.pairwise import pairwise_distances_argmin
-# from sklearn.model_selection import train_test_split
-# from sklearn.linear_model import LinearRegression
-# from sklearn.kernel_ridge import KernelRidge
-# from sklearn.metrics import mean_absolute_error
-# from sklearn.preprocessing import StandardScaler, RobustScaler
+# from src.utils import beta_CI
+from .sgld import SGLD
+from sparsemax import Sparsemax
+from scipy.stats import ttest_ind
+from sklearn.cluster import MiniBatchKMeans, KMeans
+from sklearn.metrics.pairwise import pairwise_distances_argmin
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.metrics import mean_absolute_error
+from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.cluster import KMeans
 # from sklearn.decomposition import PCA
 # from sklearn.manifold import TSNE
@@ -32,45 +34,89 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class LargeFeatureExtractor(torch.nn.Sequential):
     def __init__(self, data_dim, low_dim):
         super(LargeFeatureExtractor, self).__init__()
-        self.add_module('linear1', torch.nn.Linear(data_dim, 1000))
+        self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
         self.add_module('relu1', torch.nn.ReLU())
-        self.add_module('linear2', torch.nn.Linear(1000, 500))
+        self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
         self.add_module('relu2', torch.nn.ReLU())
-        self.add_module('linear3', torch.nn.Linear(500, 50))
+        self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
         # test if using higher dimensions could be better
         if low_dim:
             self.add_module('relu3', torch.nn.ReLU())
-            self.add_module('linear4', torch.nn.Linear(50, 1))
-        # else:
-        #     self.add_module('relu3', torch.nn.ReLU())
-        #     self.add_module('linear4', torch.nn.Linear(50, 10))
-class GPRegressionModel(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor, low_dim=False):
-        super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
-        self.feature_extractor = gp_feature_extractor
-        self.mean_module = gpytorch.means.ConstantMean()
-        if low_dim:
-            self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
-                num_dims=1, grid_size=100)
+            self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
         else:
-            self.covar_module = gpytorch.kernels.LinearKernel()
+            self.add_module('relu3', torch.nn.ReLU())
+            self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
 
-        # This module will scale the NN features so that they're nice values
-        self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
 
-    def forward(self, x):
-        # We're first putting our data through a deep net (feature extractor)
-        self.projected_x = self.feature_extractor(x)
-        self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
+class GPRegressionModel(gpytorch.models.ExactGP):
+        def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor, low_dim):
+            super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
+            self.feature_extractor = gp_feature_extractor
+            self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+            if low_dim:
+                self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                    gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
+                    outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
+                    num_dims=1, grid_size=100)
+            else:
+                self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
 
-        mean_x = self.mean_module(self.projected_x)
-        covar_x = self.covar_module(self.projected_x)
-        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-    
+            # This module will scale the NN features so that they're nice values
+            self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
+
+        def forward(self, x):
+            # We're first putting our data through a deep net (feature extractor)
+            self.projected_x = self.feature_extractor(x)
+            self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
+
+            mean_x = self.mean_module(self.projected_x)
+            covar_x = self.covar_module(self.projected_x)
+            return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+class ExactGPRegressionModel(gpytorch.models.ExactGP):
+        def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor, low_dim):
+            '''
+            Exact GP:
+            Leave placeholder for gp_feature_extractor
+            '''
+            super(ExactGPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
+            # self.mean_module = gpytorch.means.ZeroMean()
+            if low_dim:
+                self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
+            else:
+                self.covar_module = gpytorch.kernels.LinearKernel(num_dims=train_x.size(-1))
+            self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+            # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+            #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+            #     num_dims=train_x.size(-1), grid_size=1000)
+            # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+            #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1),
+            #     outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
+            #     num_dims=train_x.size(-1), grid_size=100)
+
+            # This module will scale the NN features so that they're nice values
+            self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
+
+        def forward(self, x):
+            self.projected_x = x
+            # self.projected_x = self.scale_to_bounds(x)  # Make the values "nice"
+
+            mean_x = self.mean_module(self.projected_x)
+            covar_x = self.covar_module(self.projected_x)
+            return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
+def beta_CI(lcb, ucb, beta):
+    """Lower then upper"""
+    _ucb_scaled = (ucb - lcb) / 4 * (beta-2) + ucb
+    _lcb_scaled = (ucb - lcb) / 4 * (2-beta) + lcb
+    return _lcb_scaled, _ucb_scaled
+
+
 class DKL():
 
-    def __init__(self, train_x, train_y, n_iter=2, lr=0.01, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False):
+    def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, 
+                 pretrained_nn=None, test_split=False, retrain_nn=True, spectrum_norm=False, exact_gp=False):
         self.training_iterations = n_iter
         self.lr = lr
         self.train_x = train_x
@@ -82,6 +128,8 @@ class DKL():
         self.cuda = torch.cuda.is_available()
         self.test_split = test_split
         self.output_scale = output_scale
+        self.retrain_nn = retrain_nn
+        self.exact = exact_gp # exact GP overide
         # self.cuda = False
         # split the dataset
         total_size = train_y.size(0)
@@ -99,7 +147,14 @@ class DKL():
             self._x_train = self.train_x.clone()
             self._y_train = self.train_y.clone()
 
-        
+
+        def add_spectrum_norm(module, normalize=spectrum_norm):
+            if normalize:
+                return torch.nn.utils.parametrizations.spectral_norm(module)
+            else:
+                return module
+
+
         self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim)
         if not (pretrained_nn is None):
             # print(self.feature_extractor.state_dict())
@@ -110,14 +165,21 @@ class DKL():
         self.model = GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor, low_dim=low_dim)
         self.model.covar_module.base_kernel.outputscale = self.output_scale
 
+        self.GPRegressionModel = GPRegressionModel if not self.exact else ExactGPRegressionModel
+        self.model = self.GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor, low_dim=low_dim)
+        if low_dim:
+            self.model.covar_module.base_kernel.outputscale = self.output_scale
+
         if self.cuda:
             self.model = self.model.cuda()
             self.likelihood = self.likelihood.cuda()
             self.train_x = self.train_x.cuda()
             self.train_y = self.train_y.cuda()
     
+    # def train_model(self, loss_type="mse", verbose=False, **kwargs):
     def train_model(self, loss_type="nll", verbose=False, **kwargs):
         # Find optimal model hyperparameters
+        # print(verbose)
         self.model.train()
         self.likelihood.train()
         record_mae = kwargs.get("record_mae", False) 
@@ -128,12 +190,21 @@ class DKL():
             self._train_mae_record = np.zeros(self.training_iterations//record_interval)
 
         # Use the adam optimizer
-        self.optimizer = torch.optim.Adam([
-            {'params': self.model.feature_extractor.parameters()},
-            {'params': self.model.covar_module.parameters()},
-            {'params': self.model.mean_module.parameters()},
-            {'params': self.model.likelihood.parameters()},
-        ], lr=self.lr)
+        if self.retrain_nn and not self.exact:
+            params = [
+                {'params': self.model.feature_extractor.parameters()},
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        else:
+            params = [
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        # self.optimizer = torch.optim.Adam(params, lr=self.lr)
+        self.optimizer = SGLD(params, lr=self.lr)
 
         # "Loss" for GPs - the marginal log likelihood
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
@@ -153,10 +224,12 @@ class DKL():
                 # Get output from model
                 self.output = self.model(self.train_x)
                 # Calc loss and backprop derivatives
+                # print("loss", self.output.mean, self.train_y, self.loss_func)
                 self.loss = self.loss_func(self.output, self.train_y)
+                # print('backward')
                 self.loss.backward()
                 self.optimizer.step()
-
+                # print("record")
                 if record_mae and (i + 1) % record_interval == 0:
                     self.mae_record[i//record_interval] = self.predict(self._x, self._y, verbose=False)
                     if self.test_split:
@@ -173,7 +246,6 @@ class DKL():
                 elif verbose:
                     iterator.set_postfix(loss=self.loss.item())
                 # iterator.set_description(f'ML (loss={self.loss:.4})')
-
         train(verbose)
 
     def predict(self, test_x, test_y, verbose=True, return_pred=False):
@@ -213,6 +285,8 @@ class DKL():
             return preds.mean.cpu()
 
     def latent_space(self, input_x):
+        if self.exact:
+            return input_x.cpu() if self.cuda else input_x
         if eval:
             self.model.eval()
             self.likelihood.eval()
@@ -233,12 +307,21 @@ class DKL():
         self.nll_record = torch.zeros(self.training_iterations)
 
         # Use the adam optimizer
-        self.optimizer = torch.optim.Adam([
-            {'params': self.model.feature_extractor.parameters()},
-            {'params': self.model.covar_module.parameters()},
-            {'params': self.model.mean_module.parameters()},
-            {'params': self.model.likelihood.parameters()},
-        ], lr=self.lr)
+
+        if self.exact:
+            _parameters = [
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        else:
+            _parameters = [
+                {'params': self.model.feature_extractor.parameters()},
+                {'params': self.model.covar_module.parameters()},
+                {'params': self.model.mean_module.parameters()},
+                {'params': self.model.likelihood.parameters()},
+            ]
+        self.optimizer = torch.optim.Adam(_parameters, lr=self.lr)
 
         # "Loss" for GPs - the marginal log likelihood
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
@@ -318,10 +401,11 @@ class DKL():
         if return_record:
             return self.penalty_record, self.mse_record, self.nll_record
 
-    def next_point(self, test_x, acq="ts", method="love", return_idx=False):
+    def next_point(self, test_x, acq="ts", method="love", return_idx=False, beta=2):
         """
         Maximize acquisition function to find next point to query
         """
+        # print("enter next point")
         # clear cache
         self.model.train()
         self.likelihood.train()
@@ -329,6 +413,10 @@ class DKL():
         # Set into eval mode
         self.model.eval()
         self.likelihood.eval()
+        test_x_selection = None
+        if self.exact and test_x.size(0) > 1000:
+            test_x_selection = np.random.choice(test_x.size(0), 1000)
+            test_x = test_x[test_x_selection]
 
         if self.cuda:
           test_x = test_x.cuda()
@@ -350,16 +438,119 @@ class DKL():
                 raise NotImplementedError(f"sampling method {method} not implemented")
             self.acq_val = samples
 
-        elif acq.lower() == "ucb":
+        elif acq.lower() in ["ucb", 'ci', 'lcb', 'rci']:
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
                 observed_pred = self.likelihood(self.model(test_x))
                 lower, upper = observed_pred.confidence_region()
-            self.acq_val = upper
+                lower, upper = beta_CI(lower, upper, beta)
+
+            if acq.lower() == 'ucb':
+                self.acq_val = upper
+            elif acq.lower() in ['ci', 'rci']:
+                self.acq_val = upper - lower
+                if acq.lower == 'rci':
+                    self.acq_val[upper < lower.max()] = self.acq_val.min()
+            elif acq.lower() == 'lcb':
+                self.acq_val = -lower            
+        elif acq.lower() == 'truvar':
+            # print("enter next point truvar")
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                observed_pred = self.likelihood(self.model(test_x))
+                lower, upper = observed_pred.confidence_region()
+                lower, upper = beta_CI(lower, upper, beta)
+                pred_mean = (lower + upper) / 2
+
+            self.acq_val = torch.zeros(test_x.size(0))
+            for idx in range(test_x.size(0)):
+                tmp_x = torch.cat([self.train_x, test_x[idx].reshape([1,-1])], dim=0)
+                tmp_y = torch.cat([self.train_y, pred_mean[idx].reshape([1,])])
+                _tmp_model = self.GPRegressionModel(tmp_x, tmp_y, self.likelihood, self.feature_extractor).eval()
+                with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                    _tmp_observed_pred = self.likelihood(_tmp_model(test_x))
+                    _tmp_lower, _tmp_upper = _tmp_observed_pred.confidence_region()
+                    _tmp_lower, _tmp_upper = beta_CI(_tmp_lower, _tmp_upper, beta)
+                self.acq_val[idx] = torch.sum(_tmp_lower - lower) + torch.sum(upper - _tmp_upper)
+            # print("acq value", self.acq_val.size(), self.acq_val)
+    
+
         else:
             raise NotImplementedError(f"acq {acq} not implemented")
 
         max_pts = torch.argmax(self.acq_val)
         candidate = test_x[max_pts]
+        if return_idx:
+            if test_x_selection is None:
+                return max_pts
+            else:
+                return test_x_selection[max_pts]
+        else:
+            return candidate
+
+    def CI(self, test_x,):
+        """
+        Return LCB and UCB
+        """
+
+        # clear cache
+        self.model.train()
+        self.likelihood.train()
+
+        # Set into eval mode
+        self.model.eval()
+        self.likelihood.eval()
+
+        if self.cuda:
+          test_x = test_x.cuda()
+
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            observed_pred = self.likelihood(self.model(test_x))
+            lower, upper = observed_pred.confidence_region()
+        
+        return lower, upper
+
+    def intersect_CI_next_point(self, test_x, max_test_x_lcb, min_test_x_ucb, acq="ci", beta=2, return_idx=False):
+        """
+        Maximize acquisition function to find next point to query in the intersection of historical CI
+        """
+
+        # clear cache
+        self.model.train()
+        self.likelihood.train()
+
+        # Set into eval mode
+        self.model.eval()
+        self.likelihood.eval()
+
+        if self.cuda:
+          test_x = test_x.cuda()
+
+        if acq.lower() in ["ucb", 'ci', 'lcb', 'ucb-debug']:
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                observed_pred = self.likelihood(self.model(test_x))
+                lower, upper = observed_pred.confidence_region()
+                # intersection
+                lower, upper = beta_CI(lower, upper, beta)
+                assert lower.shape == max_test_x_lcb.shape and upper.shape == min_test_x_ucb.shape
+                lower = torch.max(lower.to("cpu"), max_test_x_lcb.to("cpu"))
+                upper = torch.min(upper.to("cpu"), min_test_x_ucb.to("cpu"))
+            if acq.lower() == 'ucb-debug':
+                self.acq_val = observed_pred.confidence_region()[1]
+
+            if acq.lower() == 'ucb':
+                self.acq_val = upper
+            elif acq.lower() == 'ci':
+                self.acq_val = upper - lower
+            elif acq.lower() == 'lcb':
+                self.acq_val = -lower              
+        else:
+            raise NotImplementedError(f"acq {acq} not implemented")
+
+        max_pts = torch.argmax(self.acq_val)
+        candidate = test_x[max_pts]
+
+        # Store the intersection
+        self.max_test_x_lcb, self.min_test_x_ucb = lower, upper
+
         if return_idx:
             return max_pts
         else:
