@@ -1,34 +1,73 @@
 import gpytorch
-import os
-import random
+# import os
+# import random
 import torch
 import tqdm
-import time
-import matplotlib
-import math
-import warnings
+# import time
+# import matplotlib
+# import math
+# import warnings
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import datetime
-import itertools
+# import matplotlib.pyplot as plt
+# import matplotlib as mpl
+# import datetime
+# import itertools
 
-from sparsemax import Sparsemax
-from scipy.stats import ttest_ind
-from sklearn.cluster import MiniBatchKMeans, KMeans
-from sklearn.metrics.pairwise import pairwise_distances_argmin
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.kernel_ridge import KernelRidge
-from sklearn.metrics import mean_absolute_error
-from sklearn.preprocessing import StandardScaler, RobustScaler
+# from sparsemax import Sparsemax
+# from scipy.stats import ttest_ind
+# from sklearn.cluster import MiniBatchKMeans, KMeans
+# from sklearn.metrics.pairwise import pairwise_distances_argmin
+# from sklearn.model_selection import train_test_split
+# from sklearn.linear_model import LinearRegression
+# from sklearn.kernel_ridge import KernelRidge
+# from sklearn.metrics import mean_absolute_error
+# from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
+# from sklearn.decomposition import PCA
+# from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+class LargeFeatureExtractor(torch.nn.Sequential):
+    def __init__(self, data_dim, low_dim):
+        super(LargeFeatureExtractor, self).__init__()
+        self.add_module('linear1', torch.nn.Linear(data_dim, 1000))
+        self.add_module('relu1', torch.nn.ReLU())
+        self.add_module('linear2', torch.nn.Linear(1000, 500))
+        self.add_module('relu2', torch.nn.ReLU())
+        self.add_module('linear3', torch.nn.Linear(500, 50))
+        # test if using higher dimensions could be better
+        if low_dim:
+            self.add_module('relu3', torch.nn.ReLU())
+            self.add_module('linear4', torch.nn.Linear(50, 1))
+        # else:
+        #     self.add_module('relu3', torch.nn.ReLU())
+        #     self.add_module('linear4', torch.nn.Linear(50, 10))
+class GPRegressionModel(gpytorch.models.ExactGP):
+    def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor, low_dim=False):
+        super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
+        self.feature_extractor = gp_feature_extractor
+        self.mean_module = gpytorch.means.ConstantMean()
+        if low_dim:
+            self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+                num_dims=1, grid_size=100)
+        else:
+            self.covar_module = gpytorch.kernels.LinearKernel()
+
+        # This module will scale the NN features so that they're nice values
+        self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
+
+    def forward(self, x):
+        # We're first putting our data through a deep net (feature extractor)
+        self.projected_x = self.feature_extractor(x)
+        self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
+
+        mean_x = self.mean_module(self.projected_x)
+        covar_x = self.covar_module(self.projected_x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+    
 class DKL():
 
     def __init__(self, train_x, train_y, n_iter=2, lr=0.01, output_scale=.7, low_dim=False, pretrained_nn=None, test_split=False):
@@ -60,22 +99,7 @@ class DKL():
             self._x_train = self.train_x.clone()
             self._y_train = self.train_y.clone()
 
-        class LargeFeatureExtractor(torch.nn.Sequential):
-            def __init__(self, data_dim, low_dim):
-                super(LargeFeatureExtractor, self).__init__()
-                self.add_module('linear1', torch.nn.Linear(data_dim, 1000))
-                self.add_module('relu1', torch.nn.ReLU())
-                self.add_module('linear2', torch.nn.Linear(1000, 500))
-                self.add_module('relu2', torch.nn.ReLU())
-                self.add_module('linear3', torch.nn.Linear(500, 50))
-                # test if using higher dimensions could be better
-                if low_dim:
-                    self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4', torch.nn.Linear(50, 1))
-                # else:
-                #     self.add_module('relu3', torch.nn.ReLU())
-                #     self.add_module('linear4', torch.nn.Linear(50, 10))
-
+        
         self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim)
         if not (pretrained_nn is None):
             # print(self.feature_extractor.state_dict())
@@ -83,32 +107,7 @@ class DKL():
             self.feature_extractor.load_state_dict(pretrained_nn.encoder.state_dict(), strict=False)
             # print(self.feature_extractor, pretrained_nn)
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
-
-        class GPRegressionModel(gpytorch.models.ExactGP):
-                def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
-                    super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
-                    self.feature_extractor = gp_feature_extractor
-                    self.mean_module = gpytorch.means.ConstantMean()
-                    if low_dim:
-                        self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
-                            num_dims=1, grid_size=100)
-                    else:
-                        self.covar_module = gpytorch.kernels.LinearKernel()
-
-                    # This module will scale the NN features so that they're nice values
-                    self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
-
-                def forward(self, x):
-                    # We're first putting our data through a deep net (feature extractor)
-                    self.projected_x = self.feature_extractor(x)
-                    self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
-
-                    mean_x = self.mean_module(self.projected_x)
-                    covar_x = self.covar_module(self.projected_x)
-                    return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-    
-        self.model = GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor)
+        self.model = GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor, low_dim=low_dim)
         self.model.covar_module.base_kernel.outputscale = self.output_scale
 
         if self.cuda:
@@ -165,6 +164,7 @@ class DKL():
                     else:
                         self._train_mae_record[i//record_interval] = self.mae_record[i//record_interval]
                     if verbose:
+                        print("NLL: ", self.loss.item(), "Test MAE: ", self.mae_record[i//record_interval], "Train MAE:", self._train_mae_record[i//record_interval])
                         iterator.set_postfix({"NLL": self.loss.item(),
                                         "Test MAE":self.mae_record[i//record_interval], 
                                         "Train MAE": self._train_mae_record[i//record_interval] })

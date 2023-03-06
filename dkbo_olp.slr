@@ -1,0 +1,20 @@
+#!/bin/bash
+
+#SBATCH -N 1
+#SBATCH -t 09:00:00
+#SBATCH -p pbatch
+#SBATCH --mail-type=NONE
+###SBATCH --ip-isolate=yes
+#SBATCH -o dkbo2.out
+
+
+
+# for i in {1,2,4,5,10,20}; do
+# for i in {4,5,10,20}; do
+for i in {1,2}; do
+python test_MenuStrategy.py --name="batched_oct_x_Rosetta" --aedir="./tmp/x_rosetta_ae" --subdir="./res/batch" --datadir="./data/data_oct_x_to_Rosetta.pt" --run_times=10 --opt_horizon=200 --train_times=10 --acq_func="ts" --clustering="kmeans-y" --n_partition=3 --batch-size=$i -o -p -s -v -f ;
+done
+
+
+echo 'Done'
+

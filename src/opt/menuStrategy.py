@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import datetime
 import itertools
-
+import copy
 from ..models import DKL, AE
 from ..utils import save_res, load_res, clustering_methods
 from .dkbo_olp import DK_BO_OLP, DK_BO_OLP_Batch
@@ -44,159 +44,11 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
-
-class BaseStrategy(object):
-    """
-    Abstract class for a base ML predictor
-
-    Parameters
-    ----------- 
-    name: string
-        Name of the method.
-    
-    Attributes
-    ----------
-    name: str
-        Name of method.
-
-    Methods
-    -------
-    fit(X, y, **kwargs)
-        Fits parameters of model to data.
-    predict(X, **kwargs)
-        Use model to predict ddG values using X features.
-    load_model(X, y, **kwargs)
-        Load model parameters into model.
-    save_model(path)
-        Save model parameters to a path.
-    
-    """
-    __metaclass__ = ABCMeta
-
-    def __init__(self, name):  # , full_name):
-        self.name = name
-        self.recording = False
-
-    def __str__(self):
-        return self.name
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from abag_model_development.methods.active_learning.base_strategy import BaseStrategy, MenuStrategy
 
 
-    def save_model(self, path):
-        with open(os.path.join(path, f'{self.name}'), 'wb') as f: 
-            pickle.dump(self, f)
-
-class MenuStrategy(BaseStrategy):
-    """
-    Abstract class for a base ML predictor
-    
-    Attributes
-    ----------
-    name: str
-        Name of active learning algo for record keeping.
-    model: `GPBase`
-        underlying model that follows specification for basic model.
-    train: bool
-        Boolean whether we should train underlying model on some data before running selection.
-    iters: int
-        number of iterations to train underlying model for during intialization. Only used if train is `self.train = True`.
-    
-    """
-    __metaclass__ = ABCMeta
-
-    def __init__(self, name, model=None, train=False, iters=20):  # , full_name):
-        self.model = model
-        self.name = name
-        self.train = train
-        self.iters = iters
-
-    def __str__(self):
-        return self.name
-
-    @abstractmethod
-    def fit(self,X,y,**kwargs):
-        """
-        Fit underlying model to data X using ddG values y
-
-        Args:
-            :param torch.Tensor X: The training inputs.
-            :param torch.Tensor y: The training targets.
-
-        """
-        self.model.fit(X,y,**kwargs)
-
-
-    @abstractmethod
-    def select(self, X, i, k, **kwargs):
-        """
-        Select batch of `k` sequences from `X`. 
-
-        Args:
-            :param torch.Tensor X: NxD matrix where N is the number of seqs and D is # of features.
-            :param torch.Tensor i: N shaped vector of encoded fidelities. (TODO: this should be a kwarg)
-            :param int k: number of sequences to select
-
-        Return:
-            :return: list of indices that were selected. 
-            :rtype: list
-            ---- **optional**: these return values can be None ----
-            :return:  mean value of predictive posterior distribution obtained during selection.
-            :rtype: `torch.Tensor`
-            :return: stddev of predictive posterior distribution obtained during selection.
-            :rtype: `torch.Tensor`
-            :return:  instantiation of torch.distribution joint_mvn covariance of posterior. 
-            :rtype: `torch.Tensor`
-        """
-        pass
-
-    @abstractmethod
-    def evaluate(self, X, i):
-        """
-        Evaluate internal model at X sequences with i fidliety. 
-
-        Args:
-            :param torch.Tensor X: NxD matrix where N is the number of seqs and D is # of features.
-            :param torch.Tensor i: N shaped vector of encoded fidelities. (TODO: this should be a kwarg)
-
-        """
-        pass
-
-    @abstractmethod
-    def score(self,X, joint_mvn_mean, joint_mvn_covar):
-        """
-        Internally score seqs in X based on `joint_mvn_mean` and `joint_mvn_covar`
-        This method allows for flexible scoring rule, like adding penalties for
-        mutational distance, a specific mutation, etc.
-
-        Args:
-            :param torch.Tensor X: NxD matrix where N is the number of seqs and D is # of features.
-            :param torch.Tensor joint_mvn_mean: N shaped vector of mean value from predicitve posterior
-            :param torch.Tensor joint_mvn_covar:   NxD covariance.  NOTE: not sure if this should lazy version provided by Gpytorch
-            or the evaluated  matrix as tensor. For now I put tensor.
-         Return:
-            :return: scores for each indv. 
-            :rtype: list
-            ---- **optional**: these return values can be None ----
-            :return:  mean value of predictive posterior distribution obtained during selection.
-            :rtype: `torch.Tensor`
-            :return: stddev of predictive posterior distribution obtained during selection.
-            :rtype: `torch.Tensor`
-            
-        """
-        pass
-
-    @abstractmethod
-    def update(self,X,y,**kwargs):
-        """
-        Update internal model at `X` seqs with `y` observations
-        """
-        self.model.resume_training(X,y,**kwargs)
-
-    @abstractmethod
-    def save(self, base_path):
-        with open(os.path.join(base_path, self.name),'wb') as f:
-            pickle.dump(self,f)
-
-class DKBO_OLP_MenuStrategy(MenuStrategy):
+class DKBO_OLP(MenuStrategy):
     '''
     DKBO-Online Partition inherting Menu Strategy
 
@@ -234,7 +86,7 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
 
     def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="kmeans-y", num_GP:int=3, 
                     train_times:int=10, acq:str="ts", verbose:bool=True, lr:float=1e-2, name:str="test", ucb_strategy:str="exact",
-                    train:bool=True, pretrained:bool=False, ae_loc:str=None):
+                    train:bool=True, pretrained:bool=False, ae_loc:str=None, abag_transform=False):
         '''
         Args:
             @x_tensor: init x
@@ -250,7 +102,10 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
             @train: if updating the model.
             @pretrained: if using pretrained model to initilize the NN's weight.
             @ae_loc: location of the pretrained Auto Encoder.
+            @abag_transform: boolean that indicates if we need to transform to abag closed loop
+
         '''
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.partition_strategy = partition_strategy
         self.num_GP = num_GP
@@ -259,10 +114,14 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         self.lr = lr
         self.ucb_strategy = ucb_strategy
         self.pretrained = pretrained
+        self.ae_loc = ae_loc
         
         super().__init__(name=name, model=None, train=train, iters=train_times)
         self.train_times = self.iters
         self.if_train = self.train
+        self.abag_transform = abag_transform
+        if self.abag_transform:
+            x_tensor,y_tensor = self.transform_xy(x_tensor,y_tensor)
 
         # load pretrained model
         if self.pretrained:
@@ -272,6 +131,7 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         else:
             self.ae = None
 
+       
         # initialize the model and partitioning
         self.init_x = x_tensor
         self.init_y = y_tensor
@@ -280,8 +140,25 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
         self._dkl.train_model()
         self._dkl.model.eval()
 
+    def fit(self,X,y,**kwargs):
+        print("DKL OLP has no fit")
+        pass
 
+    def transform_xy(self,x,y, cat=False):
+        y = - copy.deepcopy(y)
+        if cat:
+            x = torch.cat([x,y.unsqueeze(-1)],axis=1)
+        x = torch.from_numpy(RobustScaler().fit_transform(copy.deepcopy(x))).float()
+        return x,y
     
+    def pretrain_ae(self, init_x=None, ae_path=None):
+        if ae_path:
+            self.ae_loc = ae_path
+        ae = AE(init_x, lr=1e-3)
+        ae.train_ae(epochs=100, batch_size=200, verbose=True)
+        torch.save(ae.state_dict(), self.ae_loc)
+        print(f"pretrained ae stored in {self.ae_loc}")
+
     def select(self, X:torch.tensor, i:int, k:int, **kwargs):
         """
         Select k points from the N*D search space X of the fidelity i.
@@ -295,12 +172,13 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
             :return: list of indices that were selected. 
             :rtype: list
         """
+        if self.abag_transform:
+            X,_ = self.transform_xy(X,X, cat=False) # y doesn't matter
         x_tensor = torch.cat([self.init_x, X]) # could result in duplication
         _data_size = x_tensor.size(0)
         _util_array = np.arange(_data_size)
         self.observed = np.zeros(_data_size)
         self.observed[:self.n_init] = 1
-
         # partition
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             _observed_pred = self._dkl.likelihood(self._dkl.model(x_tensor.to(self.device)))
@@ -340,17 +218,94 @@ class DKBO_OLP_MenuStrategy(MenuStrategy):
             _original_idx = self.cluster_idx_list[_model_idx][_candidate_idx] - self.n_init
             assert _candidate_idx >= 0 and _candidate_idx < _data_size
             selected_idx_list.append(_original_idx)
-        
-        return selected_idx_list
+        return selected_idx_list, _observed_pred.mean[self.n_init:], _observed_pred.stddev[self.n_init:], _observed_pred.covariance_matrix[self.n_init:, self.n_init:]
+
+    def visualize(self,X_tensor,y_tensor, save_path='./'):
+        colors = np.array(['r','g','b'])
+        labels = np.array(['gp1','gp2','gp3'])
+        fig = plt.figure()
+        # should use likliehood from the global GP not the local GP
+        #  use alll X,y pairs
+        # partition
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            _observed_pred = self._dkl.likelihood(self._dkl.model(X_tensor.to(self.device)))
+            _, ucb = _observed_pred.confidence_region()
+        self.cluster_id = clustering_methods(X_tensor, ucb.to('cpu'), self.num_GP, self.partition_strategy, 
+                                        dkl=True, pretrained_nn=self.ae, train_iter=self.train_times)
+        # for gp_idx, (X_tensor,y_tensor,gp_model) in enumerate(zip(self.model.init_x_list, self.model.init_y_list, self.model.dkl_list)):
+        #     with torch.no_grad(), gpytorch.settings.fast_pred_var():
+        #         observed_pred = gp_model.likelihood(gp_model.model(X_tensor))
+        #         _, ucb = observed_pred.confidence_region()
+            # _file_path = _path(save_path=save_path, name=name, init_strategy=init_strategy, n_repeat=n_repeat, n_iter=n_iter, num_GP=num_GP, cluster_interval=cluster_interval,  acq=acq, train_iter=train_times)
+            # plt.scatter(y_tensor, ucb, s=2)
+        # for gp_idx, (X_tensor,y_tensor,gp_model) in enumerate(zip(self.model.init_x_list, self.model.init_y_list, self.model.dkl_list)):
+        #     with torch.no_grad(), gpytorch.settings.fast_pred_var():
+        #         observed_pred = gp_model.likelihood(gp_model.model(X_tensor))
+        #         _, ucb = observed_pred.confidence_region()
+        #     # _file_path = _path(save_path=save_path, name=name, init_strategy=init_strategy, n_repeat=n_repeat, n_iter=n_iter, num_GP=num_GP, cluster_interval=cluster_interval,  acq=acq, train_iter=train_times)
+        #     # plt.scatter(y_tensor, ucb, s=2)
+        fig  = plt.figure()
+        for cluster_idx in self.cluster_id:
+            inds = np.where(self.cluster_id  == cluster_idx)[0]
+            plt.scatter(y_tensor[inds], ucb[inds], color=colors[cluster_idx], marker="*", s=5) # label=labels[cluster_idx]
+        plt.xlabel("ddG")
+        plt.ylabel("UCB")
+        # plt.colorbar()
+        plt.legend()
+        plt.title(f"Add iteration name here")
+        print('starting save')
+        plt.savefig(f"{save_path}.png", bbox_inches='tight', dpi=100, facecolor='white')
+        print(f"Fig stored to {save_path}")
+        plt.close(fig)
 
     def update(self,X,y,**kwargs):
         """
         Update internal model at `X` seqs with `y` observations
         """
+        if self.abag_transform:
+            X,y = self.transform_xy(X,y)
         # update the partitions
         self.init_x = torch.cat([self.init_x, X])
         self.init_y = torch.cat([self.init_y, y])
         self.n_init = self.init_x.size(0)
         self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=True)
-        self._dkl.train_model()
+        # settings to print NLL
+        self._dkl.train_model(record_mae=True, record_interval=1, verbose=True)
         self._dkl.model.eval()
+
+    def select_from_menu_df(self, menu_df, target_df, predictor_cols, type_col,
+        target_ab_ids=None, lincoeffs_target_means_by_ab=None, cost_dict=None,**kwargs):
+        
+        # 1. Combine menu df with target_df .. is this necessary? or do we just assume that 
+        # we have that? need inputs for evaluate function
+        start_rows, end_rows, rows, target_rows, pam30_penalty_values  = self.preprocess_menu_rows(menu_df, target_df, target_ab_ids=target_ab_ids)
+
+        # 2 compute / or recieve pam30 or other annotations to the sequence
+        pred_x = torch.tensor(
+        pd.concat(rows, axis=0, sort=False)[
+            predictor_cols].values,
+        dtype=torch.float
+        )
+        pred_i = torch.tensor(
+            pd.concat(rows, axis=0, sort=False)[
+                type_col].values.astype(np.double),
+            dtype=torch.long
+        )
+        # TODO: DEFINE COST HERE?
+        # TODO: k = 1 always since batching isn't done here
+        # min_cost_rows = np.repeat(1, len(joint_mvn_mean))
+        sel_idx, pred_mean, pred_std, covar = self.select(pred_x, pred_i, 1, **kwargs)
+        del covar # we don't need this. though saving it could be a good sanity check
+        # 4. add penalties # TODO: CANNOT ADD PEN
+        # for i, p30i in enumerate(pam30_penalty_values):
+        #     if not np.isnan(p30i):
+        #         scores[i] = scores[i] + p30i
+        fake_scores = np.ones(shape=len(pred_mean))
+        fake_scores[sel_idx] = -100 # NOTE: subtract initialization points fromm selected index
+        import pdb; pdb.set_trace()
+        return fake_scores, pred_mean, pred_std
+        
+    def save_model(self, path):
+        pass
+        # with open(os.path.join(path, f'{self.name}'), 'wb') as f: 
+        #     pickle.dump(self, f)
