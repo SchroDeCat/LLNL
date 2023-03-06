@@ -134,3 +134,4 @@ dmypy.json
 /tmp
 /res
 .DS_Store
+exp_result/*
