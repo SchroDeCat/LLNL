@@ -32,9 +32,9 @@ from src.models import AE
 from src.opt import ol_partition_dkbo, pure_dkbo, ol_filter_dkbo
 # from src.utils import 
 
-acq = ['ts', 'ci', 'ucb']
-EXACT=True # if globally using exact gp
-# EXACT=False
+acq = ['ts', 'ci', 'ucb', 'qei']
+# EXACT=True # if globally using exact gp
+EXACT=False
 
 # parse the cli
 class Configuration():
@@ -59,7 +59,8 @@ class Configuration():
         self.s=True     # store results
         self.f=True     # fix seed
         self.return_model=False 
-        self.v=True    # verbose
+        # self.v=True    # verbose
+        self.v=False
         self.beta=0     # true beta
         # self.filter_interval=10 if horizon > 100 else horizon //10
         self.filter_interval=1
@@ -158,20 +159,22 @@ def process(config):
 
 
 if __name__ == "__main__":
-    run_times = 4
-    exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':10},]
+    # run_times = 5
+    run_times = 2
+    exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":20, "high_dim": True, 'train_iter':10},]
+    # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':10},]
     # exps =  [{"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
     #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':10},
     #         {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':10},
     #         ]
     # exps = [{"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':15},]
     # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2, "horizon":100, "high_dim": False, 'train_iter':10},
-            # {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
-            # {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':10},
-            # {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
-            # {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
-            # {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':10},
-            # ]
+    #         {"name": "eg1d",            "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
+    #         {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':10},
+    #         {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
+    #         {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":100, "high_dim": False, 'train_iter':10},
+    #         {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':10},
+    #         ]
     # exps = [{"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.2, "horizon":100, "high_dim": True, 'train_iter':10},]
             # {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":0.2, "horizon":100, "high_dim": True, 'train_iter':1},]
     # exps = [{"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.2, "horizon":100, "high_dim": True, 'train_iter':10},
@@ -230,13 +233,17 @@ if __name__ == "__main__":
     for exp in exps:
         for ballet in [True, False]:
             if ballet:
-                continue
+                # continue
                 for intersection in [True, False]:
                     # if not intersection:
                     #     continue
                     # acqs = ['ci']
                     # acqs = ['ucb']
-                    acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci']
+                    # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci']
+                    if intersection:
+                        continue
+                    acqs = ['qei']
+
                     for acq in acqs:
                         print(acq, exp, "ballet", ballet, 'intersection', intersection)
                         config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], 
@@ -246,7 +253,8 @@ if __name__ == "__main__":
             else:
                 # acqs = ['rci']
                 # acqs = ['ts', 'ucb','ci', 'rci']
-                acqs = ['ts']
+                # acqs = ['ts']
+                acqs = ['qei']
                 for acq in acqs:
                     print(acq, exp, "ballet", ballet)
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], 

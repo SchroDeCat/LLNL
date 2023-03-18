@@ -441,22 +441,32 @@ class DKL():
         if self.cuda:
           test_x = test_x.cuda()
 
-        if acq.lower() == "ts":
+        if acq.lower() in ["ts", 'qei']:
+            '''
+            Either Thompson Sampling or Monte-Carlo EI
+            '''
+            _num_sample = 20 if acq.lower() == 'qei' else 1
             if method.lower() == "love":
                 with torch.no_grad(), gpytorch.settings.fast_pred_var(), gpytorch.settings.max_root_decomposition_size(200):
                     # NEW FLAG FOR SAMPLING
                     with gpytorch.settings.fast_pred_samples():
                         # start_time = time.time()
-                        samples = self.model(test_x).rsample()
+                        samples = self.model(test_x).rsample(torch.Size([_num_sample]))
                         # fast_sample_time_no_cache = time.time() - start_time
             elif method.lower() == "ciq":
                 with torch.no_grad(), gpytorch.settings.ciq_samples(True), gpytorch.settings.num_contour_quadrature(10), gpytorch.settings.minres_tolerance(1e-4):
                         # start_time = time.time()
-                        samples = self.likelihood(self.model(test_x)).rsample()
+                        samples = self.likelihood(self.model(test_x)).rsample(torch.Size([_num_sample]))
                         # fast_sample_time_no_cache = time.time() - start_time
             else:
                 raise NotImplementedError(f"sampling method {method} not implemented")
-            self.acq_val = samples
+            
+            if acq.lower() == 'ts':
+                self.acq_val = samples.T.squeeze()
+            elif acq.lower() == 'qei':
+                _best_y = self.train_y.max().squeeze()
+                self.acq_val = (samples.T - _best_y).clamp(min=0).mean(dim=-1)
+
 
         elif acq.lower() in ["ucb", 'ci', 'lcb', 'rci']:
             with torch.no_grad(), gpytorch.settings.fast_pred_var():
