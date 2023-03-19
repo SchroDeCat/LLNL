@@ -169,6 +169,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
     name = name if low_dim else name+'-hd'
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
+    ratio_record = np.zeros([n_repeat, n_iter])
     max_LUCB_interval_record = np.zeros([n_repeat, 3, n_iter]) # 0 - Global, 1 - ROI, 2 -- intersection
      # init dkl and generate ucb for partition
     data_size = x_tensor.size(0)
@@ -339,6 +340,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 # update records
                 _step_size = min(iter+filter_interval, n_iter)
                 reg_record[rep, iter:_step_size] = sim_dkbo.regret[-_step_size:]
+                ratio_record[rep, iter:_step_size] = min(filter_ratio, ratio_record[rep, iter-1]) if iter > 0 else filter_ratio
+
                 # update interval
                 max_LUCB_interval_record[rep:, 0, iter:_step_size] = (_ucb.max() - _lcb.max()).numpy()
                 max_LUCB_interval_record[rep:, 1, iter:_step_size] = (_roi_ucb_scaled[ucb_filter].max() - _roi_lcb_scaled[ucb_filter].max()).numpy()
@@ -377,6 +380,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
     reg_output_record = reg_record.mean(axis=0)
     
     beta = 0 if default_beta else beta # for record
+
     if plot_result:
         # regret
         fig = plt.figure()
@@ -385,6 +389,14 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
         _path = f"{save_path}/Filter{'-Exact' if exact_gp else ''}-{name}-B{beta}-FB{filter_beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        plt.savefig(f"{_path}.png")
+        # filter ratio
+        fig = plt.figure()
+        plt.plot(reg_output_record)
+        plt.ylabel("Ratio")
+        plt.xlabel("Iteration")
+        plt.title(f'ROI Ratio for {name}')
+        _path = f"{save_path}/Filter{'-Exact' if exact_gp else ''}-{name}-ratio-B{beta}-FB{filter_beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
         plt.savefig(f"{_path}.png")
         # interval
         fig = plt.figure()
@@ -404,6 +416,9 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
     if save_result:
         assert not (save_path is None)
         save_res(save_path=save_path, name=f"{name}{'-Exact' if exact_gp else ''}-B{beta}-FB{filter_beta}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+                init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
+        
+        save_res(save_path=save_path, name=f"{name}{'-Exact' if exact_gp else ''}-B{beta}-FB{filter_beta}-ratio", res=ratio_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
 
         save_res(save_path=save_path, name=f"{name}{'-Exact' if exact_gp else ''}-B{beta}-FB{filter_beta}-interval", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
