@@ -378,6 +378,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
     for rep in range(n_repeat):
         reg_record[rep] = np.minimum.accumulate(reg_record[rep])
     reg_output_record = reg_record.mean(axis=0)
+    ratio_output_record = ratio_record.mean(axis=0)
     
     beta = 0 if default_beta else beta # for record
 
@@ -392,7 +393,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
         plt.savefig(f"{_path}.png")
         # filter ratio
         fig = plt.figure()
-        plt.plot(reg_output_record)
+        plt.plot(ratio_output_record)
         plt.ylabel("Ratio")
         plt.xlabel("Iteration")
         plt.title(f'ROI Ratio for {name}')
