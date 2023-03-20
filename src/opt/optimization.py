@@ -688,6 +688,7 @@ def ol_partition_kmeansY_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, num_GP=
         plt.title(f'simple regret for {name}')
         _path = f"{save_path}/Partition_kmeansY-{name}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
         plt.savefig(f"{_path}.png")
+        plt.close()
         # filter ratio
         fig = plt.figure()
         plt.plot(ratio_output_record)
@@ -696,6 +697,7 @@ def ol_partition_kmeansY_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, num_GP=
         plt.title(f'ROI Ratio for {name}')
         _path = f"{save_path}/Partition_kmeansY-ratio-{name}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
         plt.savefig(f"{_path}.png")
+        plt.close()
 
     if save_result:
         assert not (save_path is None)
