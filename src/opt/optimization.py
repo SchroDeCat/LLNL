@@ -559,6 +559,156 @@ def ol_partition_dkbo(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10,
     if return_result:
         return reg_record
 
+def ol_partition_kmeansY_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, num_GP=2, train_times=10, low_dim=True,
+                    n_iter=40, cluster_interval=1, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, ci_intersection=True,
+                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION):
+    # print(ucb_strategy)
+    init_strategy = "kmeans-y"
+    ucb_strategy = 'exact' if not ci_intersection else 'min'
+    max_val = y_tensor.max()
+    reg_record = np.zeros([n_repeat, n_iter])
+    ratio_record = np.zeros([n_repeat, n_iter])
+     # init dkl and generate ucb for partition
+    data_size = x_tensor.size(0)
+    util_array = np.arange(data_size)
+
+    if pretrained:
+        assert not (ae_loc is None)
+        ae = AE(x_tensor, lr=1e-3)
+        ae.load_state_dict(torch.load(ae_loc, map_location=DEVICE))
+    else:
+        ae = None
+
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for rep in tqdm.tqdm(range(n_repeat), desc=f"{init_strategy}"):
+            # set seed
+            if fix_seed:
+                # print(n_init+n_repeat*n_iter)
+                _seed = rep * 20 + n_init
+                # _seed = 70
+                torch.manual_seed(_seed)
+                np.random.seed(_seed)
+                random.seed(_seed)
+                torch.cuda.manual_seed(_seed)
+                torch.backends.cudnn.benchmark = False
+                torch.backends.cudnn.deterministic = True
+
+
+            # init in each round
+            observed = np.zeros(data_size)
+            observed[:n_init] = 1
+            init_x = x_tensor[:n_init]
+            init_y = y_tensor[:n_init]
+            _dkl = DKL(init_x, init_y.squeeze(), n_iter=10, low_dim=low_dim)
+            _dkl.train_model()
+            _dkl.model.eval()
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                _observed_pred = _dkl.likelihood(_dkl.model(x_tensor.to(DEVICE)))
+                _, ucb = _observed_pred.confidence_region()
+            # print(f"pretrained {pretrained} ae {type(ae)}  n_iter {train_times}")
+            cluster_id = clustering_methods(x_tensor, ucb.to('cpu'), num_GP, init_strategy, dkl=True, pretrained_nn=ae, train_iter=train_times)
+            cluster_id_init = cluster_id[observed==1]
+
+            # each test instance
+            iterator = tqdm.tqdm(range(0, n_iter, cluster_interval))
+            for iter in iterator:
+                scaled_input_list, scaled_output_list = [], []
+                init_x_list, init_y_list = [], []
+                for idx in range(num_GP):
+                    cluster_filter = cluster_id == idx
+                    cluster_filter[:n_init] = True
+                    # print(f"cluster {idx} size {sum(cluster_filter)}")
+                    scaled_input_list.append(x_tensor[cluster_filter])
+                    scaled_output_list.append(y_tensor[cluster_filter])
+
+                    cluster_init_filter = cluster_id_init == idx
+                    cluster_init_filter[:n_init] = True
+                    filter_ratio = sum(cluster_init_filter) / cluster_init_filter.shape[0]
+                    # print(f"cluster init {idx} size {sum(cluster_init_filter)} {cluster_id_init}")
+                    # print(f"init_x size {init_x.size()}, observed num {sum(observed)}")
+                    init_x_list.append(init_x[cluster_init_filter])
+                    init_y_list.append(init_y[cluster_init_filter].reshape([-1,1]))
+                    # print(f"sizes {init_x_list[0].size()}, {init_y_list[0].size()} num_GP {num_GP}")
+
+                dkbo_olp = DK_BO_OLP(init_x_list, init_y_list, scaled_input_list, scaled_output_list, lr=lr, train_iter=train_times,low_dim=low_dim,
+                                n_init=n_init, regularize=False, dynamic_weight=False, max_val=max_val, num_GP=num_GP, pretrained_nn=ae)
+                # print("dkbo y list", torch.cat(dkbo_olp.init_y_list).max(), "dkbo Y list shape", torch.cat(dkbo_olp.init_y_list).size())
+
+                # record regret
+                query_num = min(cluster_interval, n_iter-iter)
+                dkbo_olp.query(n_iter=query_num, acq=acq, verbose=verbose)
+                reg_record[rep, iter:min(iter+cluster_interval, n_iter)] = dkbo_olp.regret
+                ratio_record[rep, iter:min(iter+cluster_interval, n_iter)] = filter_ratio
+
+                iterator.set_postfix({"regret": reg_record[rep, :min(iter+cluster_interval, n_iter)].min(), "filter ratio": filter_ratio})
+                
+                # update ucb for clustering
+                ucb = dkbo_olp.ucb_func(x_tensor=x_tensor, method=ucb_strategy, cluster_id=cluster_id)
+                for loc in dkbo_olp.observed:
+                    cluster_filter = cluster_id==loc[0]
+                    cluster_filter[:n_init] = True  # align with previous workaround
+                    if sum(cluster_filter) > 0:
+                        observed[util_array[cluster_filter][loc[1]]] = 1
+                
+                cluster_id = clustering_methods(x_tensor, ucb, num_GP, init_strategy, dkl=True, pretrained_nn=ae, train_iter=train_times)
+
+                # update observed clustering
+                # init_x, init_y = torch.cat(dkbo_olp.init_x_list), torch.cat(dkbo_olp.init_y_list)
+                init_x, init_y = x_tensor[observed==1], y_tensor[observed==1]
+                # print(f"max n_init init_y {init_y[:n_init].max()} reg {obj - init_y[:n_init].max()}")
+                cluster_id_init = cluster_id[observed==1]
+
+                if study_partition:
+                    _path = f"{save_path}/OL-{name}-{init_strategy}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_times}"
+                    # _file_path = _path(save_path=save_path, name=name, init_strategy=init_strategy, n_repeat=n_repeat, n_iter=n_iter, num_GP=num_GP, cluster_interval=cluster_interval,  acq=acq, train_iter=train_times)
+                    fig = plt.figure()
+                    plt.scatter(y_tensor, ucb, c=cluster_id, s=2)
+                    plt.scatter(y_tensor[observed==1], ucb[observed==1], color='r', marker="*", s=5)
+                    plt.xlabel("Label")
+                    plt.ylabel("UCB")
+                    plt.colorbar()
+                    plt.title(f"{name} Iter {iter}")
+                    plt.savefig(f"{_path}-Iter{iter}.png")
+                    print(f"Fig stored to {_path}")
+
+    for rep in range(n_repeat):
+        reg_record[rep] = np.minimum.accumulate(reg_record[rep])
+        ratio_record[rep] = np.minimum.accumulate(ratio_record[rep])
+    reg_output_record = reg_record.mean(axis=0)
+    ratio_output_record = ratio_record.mean(axis=0)
+
+    
+    if plot_result:
+        fig = plt.figure()
+        plt.plot(reg_output_record)
+        plt.ylabel("regret")
+        plt.xlabel("Iteration")
+        plt.title(f'simple regret for {name}')
+        _path = f"{save_path}/Partition_kmeansY-{name}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        plt.savefig(f"{_path}.png")
+        # filter ratio
+        fig = plt.figure()
+        plt.plot(ratio_output_record)
+        plt.ylabel("Ratio")
+        plt.xlabel("Iteration")
+        plt.title(f'ROI Ratio for {name}')
+        _path = f"{save_path}/Partition_kmeansY-ratio-{name}-{acq}-R{n_repeat}-P{num_GP}-T{n_iter}_I{cluster_interval}_L{int(-np.log10(lr))}-TI{train_times}{'-sec' if ci_intersection else ''}"
+        plt.savefig(f"{_path}.png")
+
+    if save_result:
+        assert not (save_path is None)
+        save_res(save_path=save_path, name=f"{name}", res=reg_record, n_repeat=n_repeat, num_GP=num_GP, n_iter=n_iter, train_iter=train_times,
+                init_strategy='none', cluster_interval=cluster_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
+        
+        save_res(save_path=save_path, name=f"{name}-ratio", res=ratio_record, n_repeat=n_repeat, num_GP=num_GP, n_iter=n_iter, train_iter=train_times,
+                init_strategy='none', cluster_interval=cluster_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
+
+    if return_result:
+        return reg_record
+
+
 def truvar(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, low_dim=True, spectrum_norm=False, 
                    n_iter=40, filter_interval=1, ci_intersection=True, verbose=True, lr=1e-2, name="test", return_result=True, retrain_nn=True,
                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, _minimum_pick = 10, 

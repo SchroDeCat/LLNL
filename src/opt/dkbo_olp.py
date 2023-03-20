@@ -40,11 +40,12 @@ class DK_BO_OLP():
     distinguish history
     """
     def __init__(self, init_x_list, init_y_list, train_x, train_y, lr=0.01, train_iter:int=10, n_init:int=10, regularize=False, 
-                        dynamic_weight=False, verbose=False, max_val:float=None, num_GP:int=2, pretrained_nn=None):
+                        dynamic_weight=False, verbose=False, max_val:float=None, num_GP:int=2, pretrained_nn=None, low_dim=True):
         # scale input
         ROBUST = True
         ScalerClass = RobustScaler if ROBUST else StandardScaler
         # init vars
+        self.low_dim = low_dim
         self.lr = lr
         self.regularize = regularize
         self.verbose = verbose
@@ -65,7 +66,7 @@ class DK_BO_OLP():
         for idx in range(num_GP):
             self.train_x_list.append(torch.from_numpy(ScalerClass().fit_transform(train_x[idx])).float())
             self.train_y_list.append(train_y[idx])
-            tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+            tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=low_dim,  pretrained_nn=self.pretrained_nn)
             self.dkl_list.append(tmp_dkl)
             # print("init length scale", self.dkl_list[idx].model.covar_module.base_kernel.outputscale.item())
 
@@ -102,7 +103,7 @@ class DK_BO_OLP():
             self.init_x_list[candidate_model_idx] = torch.cat([self.init_x_list[candidate_model_idx], self.train_x_list[candidate_model_idx][candidate_idx].reshape(1,-1)], dim=0)
             self.init_y_list[candidate_model_idx] = torch.cat([self.init_y_list[candidate_model_idx], self.train_y_list[candidate_model_idx][candidate_idx].reshape(1,-1)])
             # retrain
-            self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+            self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=self.low_dim,  pretrained_nn=self.pretrained_nn)
             self.train(candidate_model_idx)
             # regret
             self.regret[i] = self.maximum - torch.max(torch.cat(self.init_y_list))
@@ -115,6 +116,7 @@ class DK_BO_OLP():
         """
         Supported Method: max, exact, sum
         - max: maximum over multiple UCBs from those local GPs
+        - min: minimum over multiple UCBs from those local GPs
         - exact: exactly from the local GP it belongs to
         - sum: balance between max & exact.
         """
@@ -128,6 +130,8 @@ class DK_BO_OLP():
                     _, _upper = _observed_pred.confidence_region()
             if method.lower() == "max":
                 ucb = _upper if id == 0 else torch.max(ucb, _upper)
+            elif method.lower() == "min":
+                ucb = _upper if id == 0 else torch.min(ucb, _upper)
             elif method.lower() == "sum":
                 ucb = _upper if id == 0 else ucb + _upper
             elif method.lower() == "exact":
@@ -167,9 +171,10 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
     """
 
     def __init__(self, init_x_list, init_y_list, lr:float=0.01, train_iter:int=10, n_init:int=10,
-                    verbose:bool=False, num_GP:int=2, pretrained_nn=None):
+                    verbose:bool=False, num_GP:int=2, pretrained_nn=None, low_dim=True):
         # init vars
         self.lr = lr
+        self.low_dim = low_dim
         self.verbose = verbose
         self.n_init = n_init
         self.num_GP = num_GP
@@ -183,7 +188,7 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
         # init lists
         for idx in range(num_GP):
             # self.test_x_list.append(torch.from_numpy(ScalerClass().fit_transform(test_x[idx])).float())
-            tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+            tmp_dkl = DKL(self.init_x_list[idx], self.init_y_list[idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=low_dim,  pretrained_nn=self.pretrained_nn)
             self.dkl_list.append(tmp_dkl)
 
         self.cuda = torch.cuda.is_available()
@@ -237,7 +242,7 @@ class DK_BO_OLP_Batch(DK_BO_OLP):
             self.init_y_list[candidate_model_idx] = torch.cat([self.init_y_list[candidate_model_idx], __hallucination])
             
             # retrain
-            self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True,  pretrained_nn=self.pretrained_nn)
+            self.dkl_list[candidate_model_idx] = DKL(self.init_x_list[candidate_model_idx], self.init_y_list[candidate_model_idx].squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=self.low_dim,  pretrained_nn=self.pretrained_nn)
             self.train(candidate_model_idx) # the original framework of batched query do not engage retraining, 
                                             # but we follows the recent study that empirically shows retraining provides better performance.
 
