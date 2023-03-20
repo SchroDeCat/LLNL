@@ -47,7 +47,7 @@ class Configuration():
         self.name   = name
         self.aedir  = f"./tmp/{ae_dir}"
         # self.subdir = f"./res/aistats/{acq}"  
-        self.subdir = f"./res/icml/kmeansY"
+        self.subdir = f"./res/kmeansY/{acq}"
         # self.subdir = './res/ei'
         self.datadir=f"./data/{data_dir}" 
         self.run_times  =run_times
@@ -170,21 +170,17 @@ if __name__ == "__main__":
     run_times = 2
 # {"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
 # {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2, "horizon":300, "high_dim": False, 'train_iter':5},
-    exps = [
-            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":300, "high_dim": False, 'train_iter':20},
-            {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":200, "high_dim": True, 'train_iter':5},
-            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
-            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
-            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1, "horizon":200, "high_dim": True, 'train_iter':5},
-            ]
-
-# debug
-    exps = [
-            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":10, "high_dim": False, 'train_iter':5},
-            {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":10, "high_dim": True, 'train_iter':5},
-            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":10, "high_dim": False, 'train_iter':5},
-            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":10, "high_dim": False, 'train_iter':5},
-            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1, "horizon":10, "high_dim": True, 'train_iter':5},
+    exps = [ {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":200, "high_dim": True, 'train_iter':10},
+            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":300, "high_dim": False, 'train_iter':10},
+            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':10},
+            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':10},
+            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1, "horizon":200, "high_dim": True, 'train_iter':10},]
+ # debug
+    exps = [ {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":2, "high_dim": True, 'train_iter':10},
+            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":3, "high_dim": False, 'train_iter':10},
+            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":3, "high_dim": False, 'train_iter':10},
+            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":3, "high_dim": False, 'train_iter':10},
+            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1, "horizon":2, "high_dim": False, 'train_iter':10},
             ]
     # exps = [{"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},]
     # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":20, "high_dim": True, 'train_iter':10},]
@@ -265,7 +261,7 @@ if __name__ == "__main__":
                     #     continue
                     # acqs = ['ci']
                     # acqs = ['ucb']
-                    acqs = ['ts', 'ci', 'ucb']
+                    acqs = ['ts', 'ci', 'ucb', 'qei']
                     # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci', 'qei']
                     # if intersection:
                         # continue
@@ -282,7 +278,7 @@ if __name__ == "__main__":
                 # acqs = ['ts', 'ucb','ci', 'rci']
                 # acqs = ['ts']
                 # acqs = ['qei', 'ts']
-                acqs = ['ts', 'ci', 'ucb']
+                acqs = ['ts', 'ci', 'ucb', 'qei']
                 for acq in acqs:
                     print(acq, exp, "ballet", ballet)
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], 
