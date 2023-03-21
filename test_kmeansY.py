@@ -170,8 +170,8 @@ if __name__ == "__main__":
     # run_times = 2
 # {"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
 # {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2, "horizon":300, "high_dim": False, 'train_iter':5},
-    exps = [{"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':5},
-            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1,   "horizon":100,   "high_dim": True, 'train_iter':5},
+# {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":100, "high_dim": True, 'train_iter':5},
+    exps = [            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1,   "horizon":100,   "high_dim": False, 'train_iter':5},
             {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":300, "high_dim": False, 'train_iter':20},
             {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
             {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
