@@ -98,7 +98,7 @@ def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_ite
     if return_result:
         pass
 
-def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True, beta=2,
+def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True, beta=2, retrain_interval:int=1,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, exact_gp=False, study_partition=STUDY_PARTITION):
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
@@ -129,7 +129,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
             sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
                                 n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
                                 max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp)
-            sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, beta=beta, study_res_path=save_path, if_tqdm=verbose)
+            sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, retrain_interval=retrain_interval, beta=beta, study_res_path=save_path, if_tqdm=verbose)
             reg_record[rep, :] = sim_dkbo.regret
 
     reg_output_record = reg_record.mean(axis=0)
@@ -145,13 +145,13 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         plt.ylabel("Regret")
         plt.title("DKBO performance")
         # plt.show()
-        _path = f"{save_path}/Pure-DK-{name}{'-Exact' if exact_gp else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}"
+        _path = f"{save_path}/Pure-DK-{name}{'-Exact' if exact_gp else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}-RI{retrain_interval}"
         plt.savefig(f"{_path}.png")
         plt.close()
 
     if save_result:
         assert not (save_path is None)
-        _path = f"{save_path}/Pure-DK-{name}{'-Exact' if exact_gp else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}.npy"
+        _path = f"{save_path}/Pure-DK-{name}{'-Exact' if exact_gp else ''}-{acq}-R{n_repeat}-T{n_iter}_L{int(-np.log10(lr))}-TI{train_iter}-RI{retrain_interval}.npy"
         np.save(_path, reg_record)
        
         # save_res(save_path=save_path, name=name if low_dim else name+"-hd", res=reg_record, n_repeat=n_repeat, num_GP=1, n_iter=n_init, train_iter=train_iter,

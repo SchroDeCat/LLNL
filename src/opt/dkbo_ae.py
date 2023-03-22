@@ -92,7 +92,7 @@ class DK_BO_AE():
 
         
 
-    def query(self, n_iter:int=10, acq="ts", study_ucb=False, **kwargs):
+    def query(self, n_iter:int=10, acq="ts", study_ucb=False, retrain_interval:int=1, **kwargs):
         self.regret = np.zeros(n_iter)
         self.interval = np.zeros(n_iter)
         if_tqdm = kwargs.get("if_tqdm", False)
@@ -139,12 +139,21 @@ class DK_BO_AE():
                 plt.savefig(f"{_path}/pure_dkbo_Scaling{self.dkl.model.covar_module.base_kernel.outputscale}_Iter{i}.png")
 
             # retrain
+            if i % retrain_interval == 0 and self.low_dim: # allow skip retrainm in low-dim setting
+                self._state_dict_record = self.dkl.feature_extractor.state_dict()
+                self._output_scale_record = self.dkl.model.covar_module.base_kernel.outputscale
+                self._length_scale_record = self.dkl.model.covar_module.base_kernel.base_kernel.lengthscale
             self.dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, pretrained_nn=self.pretrained_nn, retrain_nn=self.retrain_nn,
                                  spectrum_norm=self.spectrum_norm, exact_gp=self.exact)
             if self.record_loss:
                 self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=self.spectrum_norm, exact_gp=self.exact)
             # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
-            self.train()
+            if i % retrain_interval == 0 and self.low_dim:
+                self.dkl.feature_extractor.load_state_dict(self._state_dict_record, strict=False)
+                self.dkl.model.covar_module.base_kernel.outputscale = self._output_scale_record
+                self.dkl.model.covar_module.base_kernel.base_kernel.lengthscale = self._length_scale_record
+            else:
+                self.train()
             if self.record_loss:
                 self.loss_record["DK-AE"].append(self.dkl.mae_record[-1])
                 self.loss_record["DK"].append(self._pure_dkl.mae_record[-1])
