@@ -166,6 +166,7 @@ if __name__ == "__main__":
     # run_times = 5
     # run_times = 4
     # run_times = 2
+<<<<<<< HEAD
 
     exps = [{"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
             {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2,  "horizon":300, "high_dim": False, 'train_iter':10},
@@ -190,6 +191,18 @@ if __name__ == "__main__":
     # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":.05, "horizon":200, "high_dim": False, 'train_iter':10},]
     # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1e-4, "horizon":100, "high_dim": False, 'train_iter':100},]
     # # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":.05, "horizon":200, "high_dim": False, 'train_iter':10},]
+=======
+# {"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
+# {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2, "horizon":300, "high_dim": False, 'train_iter':5},
+    exps = [
+            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":300, "high_dim": False, 'train_iter':20},
+            {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":200, "high_dim": True, 'train_iter':5},
+            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
+            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
+            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1, "horizon":200, "high_dim": True, 'train_iter':5},
+            ]
+    exps = [{"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},]
+>>>>>>> 395097c654403fc9c4b5467daa1a2513dd8fa151
     # exps = [{"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},]
     # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":20, "high_dim": True, 'train_iter':10},]
     # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':10},]
@@ -269,10 +282,18 @@ if __name__ == "__main__":
                     # if not intersection:
                         # continue
                     # acqs = ['ci']
+<<<<<<< HEAD
                     # acqs = ['ucb']
                     if intersection:
                         continue
 
+=======
+                    acqs = ['ucb']
+                    # acqs = ['ci', 'ucb']
+                    # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci', 'qei']
+                    # if intersection:
+                        # continue
+>>>>>>> 395097c654403fc9c4b5467daa1a2513dd8fa151
                     # acqs = ['qei', 'ts']
                     # acqs = ['ts']
                     # acqs = ['qei']
@@ -288,9 +309,16 @@ if __name__ == "__main__":
                 # acqs = ['rci']
                 # acqs = ['ts', 'ucb','ci', 'rci']
                 # acqs = ['ts']
+<<<<<<< HEAD
                 acqs = [ 'qei']
                 # acqs = []
                 # acqs = ['ts','ucb']
+=======
+                # acqs = ['qei', 'ts']
+                # acqs = ['ci', 'ucb']
+                # acqs = ['ci']
+                acqs = ['ucb']
+>>>>>>> 395097c654403fc9c4b5467daa1a2513dd8fa151
                 for acq in acqs:
                     print(acq, exp, "ballet", ballet)
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], retrain_interval=exp['retrain_interval'],
