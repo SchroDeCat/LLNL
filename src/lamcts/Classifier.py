@@ -326,7 +326,8 @@ class Classifier():
             sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=1e-6,
                                     n_init=len(samples),  train_iter=100, regularize=False, dynamic_weight=False, low_dim= not high_dim,
                                     max=y_tensor.max(), pretrained_nn=pretrained_nn, verbose=False, init_x=init_x, init_y=init_y)
-            sim_dkbo.query(n_iter=num_samples, acq='ts', study_ucb=False, study_interval=10, study_res_path=None, if_tqdm=False)
+            sim_dkbo.query(n_iter=num_samples, acq='ts', study_ucb=False, study_interval=10, study_res_path=None, if_tqdm=False, early_stop=False, retrain_interval=num_samples,)
+        # print("dkbo", len(sim_dkbo.init_x[-num_samples:].tolist()), " size\n")
         return sim_dkbo.init_x[-num_samples:].tolist(), sim_dkbo.init_y[-num_samples:].tolist()
 
     def propose_samples_bo( self, X = None, nums_samples = 10, path = None, lb = None, ub = None, samples = None):
