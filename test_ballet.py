@@ -47,8 +47,8 @@ class Configuration():
         # self.subdir = './res/ei'
         self.datadir=f"./data/{data_dir}" 
         self.run_times  =run_times
-        self.acq_func =acq
-        self.learning_rate=4  
+        self.acq_func = acq
+        self.learning_rate = 4  
         self.intersection=intersection  
         self.a=False
         self.r=False
@@ -64,8 +64,8 @@ class Configuration():
         self.v=False
         self.beta=beta  # true beta
         # self.filter_interval=10 if horizon > 100 else horizon //10
-        self.filter_interval=1
-        # self.filter_interval=1 if horizon <= 100 else 100
+        # self.filter_interval=1
+        self.filter_interval=1 if horizon <= 100 else 40
         self.retrain_interval=retrain_interval
         self.opt_horizon=horizon
         self.train_times=train_time
@@ -151,7 +151,8 @@ def process(config):
 
     print(f"Learning rate {learning_rate} Filtering {config.o} fix_seed {fix_seed} beta {config.beta} Regularize {config.r} Low dim {low_dim} CI intersection {config.intersection} verbose={verbose}")
     if config.o:
-        res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=config.init_num, n_repeat=config.run_times, low_dim=low_dim, beta=config.beta, regularize=config.r,   ci_intersection=config.intersection,
+        res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=config.init_num, n_repeat=config.run_times, low_dim=low_dim, beta=config.beta, regularize=config.r,   
+                        retrain_interval=config.retrain_interval, ci_intersection=config.intersection,
                         n_iter=config.opt_horizon, filter_interval=config.filter_interval, acq=config.acq_func, verbose=verbose, lr=learning_rate, name=config.name, train_times=config.train_times, filter_beta=config.fbeta,
                         plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=not config.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir, exact_gp=config.exact)
     else:
@@ -166,16 +167,32 @@ if __name__ == "__main__":
     # run_times = 5
     # run_times = 4
     # run_times = 2
-# {"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
-# {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2, "horizon":300, "high_dim": False, 'train_iter':5},
-    exps = [
-            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.05, "horizon":300, "high_dim": False, 'train_iter':20},
-            {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":200, "high_dim": True, 'train_iter':5},
-            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
-            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},
-            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1, "horizon":200, "high_dim": True, 'train_iter':5},
+
+    exps = [{"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},
+            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2,  "horizon":300, "high_dim": False, 'train_iter':10},
+            {"name": "nano",            "ae_dir": "nano_mf_ae",         "data_dir":"data_nano_mf.pt",           "fbeta":0.8, "horizon":200, "high_dim": True, 'train_iter':10},
+            {"name": "hdbo",            "ae_dir": "200d_ae",            "data_dir":"HDBO200.npy",               "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':10},
+            {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':10},
+            {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1,   "horizon":200, "high_dim": True, 'train_iter':10},
             ]
-    exps = [{"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5},]
+    exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':10}]
+    exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5}]
+    exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':20,}]
+    exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':100,}]
+
+    exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.01,  "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':10},]
+    # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':6}]
+    # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':7}]
+    # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':8}]
+    # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':9}]
+
+    # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':10},
+            #  {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2,  "horizon":300, "high_dim": False, 'train_iter':10}]
+    # exps = [ {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.2,  "horizon":300, "high_dim": False, 'train_iter':10}]
+    # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":.1, "horizon":200, "high_dim": False, 'train_iter':10},]
+    # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":.05, "horizon":200, "high_dim": False, 'train_iter':10},]
+    # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":1e-4, "horizon":100, "high_dim": False, 'train_iter':100},]
+    # # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":.05, "horizon":200, "high_dim": False, 'train_iter':10},]
     # exps = [{"name": "eg1d",           "ae_dir": "1deg_ae",            "data_dir":"opt_eg1d.npy",              "fbeta":0.2, "horizon":50, "high_dim": False, 'train_iter':10},]
     # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":20, "high_dim": True, 'train_iter':10},]
     # exps = [{"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":80, "horizon":100, "high_dim": True, 'train_iter':10},]
@@ -252,22 +269,22 @@ if __name__ == "__main__":
                 # continue
                 for intersection in [True, False]:
                     # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci', 'qei']
+                    acqs = [ 'ucb'] if intersection else ['ts', 'ucb']
                     # if not intersection:
                         # continue
                     # acqs = ['ci']
-                    acqs = ['ucb']
-                    # acqs = ['ci', 'ucb']
-                    # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci', 'qei']
+                    # acqs = ['ucb']
                     # if intersection:
                         # continue
+
                     # acqs = ['qei', 'ts']
                     # acqs = ['ts']
                     # acqs = ['qei']
-                    acqs = []
+                    # acqs = []
 
                     for acq in acqs:
                         print(acq, exp, "ballet", ballet, 'intersection', intersection)
-                        config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], 
+                        config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], retrain_interval=exp['retrain_interval'],
                                     run_times=run_times, horizon=exp["horizon"], acq=acq, fbeta=exp["fbeta"],
                                     intersection=intersection, ballet=ballet, high_dim=exp["high_dim"], train_time=exp["train_iter"])
                         process(config)
@@ -275,10 +292,9 @@ if __name__ == "__main__":
                 # acqs = ['rci']
                 # acqs = ['ts', 'ucb','ci', 'rci']
                 # acqs = ['ts']
-                # acqs = ['qei', 'ts']
-                # acqs = ['ci', 'ucb']
-                # acqs = ['ci']
-                acqs = ['ucb']
+                # acqs = [ 'qei']
+                # acqs = []
+                acqs = ['ts','ucb']
                 for acq in acqs:
                     print(acq, exp, "ballet", ballet)
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], retrain_interval=exp['retrain_interval'],
