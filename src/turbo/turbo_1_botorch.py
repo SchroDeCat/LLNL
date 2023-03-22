@@ -50,7 +50,7 @@ class TurboState:
         )
 
 class TuRBO():
-    def __init__(self, train_x, train_y, n_init:int=10, acqf="ts", batch_size = 1, verbose=True, 
+    def __init__(self, train_x, train_y, n_init:int=10, acqf="ts", batch_size = 1, verbose=True, low_dim:bool=True,
                     num_restarts=2, raw_samples = 512, discrete=True, pretrained_nn=None, train_iter=10, learning_rate=1e-2):
                 
         def obj_func(pts):
@@ -58,6 +58,7 @@ class TuRBO():
             index = torch.argmin(torch.sum(diff, dim=1))
             return train_y[index]
         self.maximum = train_y.max()
+        # low_dim=False
         self.dim = train_x.size(1)
         self.training_iterations = train_iter
         # print("train iter", self.training_iterations)
@@ -96,107 +97,102 @@ class TuRBO():
                 gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
                 num_dims=self.dim, grid_size=10)
             # self.covar_module = gpytorch.kernels.LinearKernel()
+        def add_spectrum_norm(module, normalize=False):
+            if normalize:
+                return torch.nn.utils.parametrizations.spectral_norm(module)
+            else:
+                return module
+        class LargeFeatureExtractor(torch.nn.Sequential):
+            def __init__(self, data_dim):
+                super(LargeFeatureExtractor, self).__init__()
+                self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
+                self.add_module('relu1', torch.nn.ReLU())
+                self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
+                self.add_module('relu2', torch.nn.ReLU())
+                self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
+                # test if using higher dimensions could be better
+                if low_dim:
+                    self.add_module('relu3', torch.nn.ReLU())
+                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
+                else:
+                    self.add_module('relu3', torch.nn.ReLU())
+                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
+
+        class GPRegressionModel(gpytorch.models.ExactGP):
+                def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
+                    super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
+                    self.feature_extractor = gp_feature_extractor
+                    # self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                    self.mean_module = gpytorch.means.ConstantMean()
+                    if low_dim:
+                        self.covar_module = gpytorch.kernels.GridInterpolationKernel(
+                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
+                                                            num_dims=1, grid_size=100)
+                            # outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
+                    else:
+                        self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
+
+                    # This module will scale the NN features so that they're nice values
+                    self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
+
+                def forward(self, x):
+                    # We're first putting our data through a deep net (feature extractor)
+                    self.projected_x = self.feature_extractor(x)
+                    self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
+
+                    mean_x = self.mean_module(self.projected_x)
+                    covar_x = self.covar_module(self.projected_x)
+                    return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+        self.LargeFeatureExtractor, self.GPRegressionModel = LargeFeatureExtractor, GPRegressionModel
     
-    def opt(self, max_iter:int=100, low_dim:bool=True):
-        low_dim = False
+    def opt(self, max_iter:int=100, retrain_interval:int=20,):
         # print(self.verbose)
         iterator = tqdm(range(max_iter)) if self.verbose else range(max_iter)
-        for _ in iterator:
-            # print(f"i {i}")
-            # if state.restart_triggered:  # Run until TuRBO converges
-            #     break
-            # Fit a GP model
-            # print(f"Size {self.X_turbo.size()} {self.Y_turbo.size()}")
-            # print(f"x {self.X_turbo} y {self.Y_turbo}")
+        for opt_iter in iterator:
             self.train_Y = (self.Y_turbo - self.Y_turbo.mean()) / self.Y_turbo.std()
-            # print(f"x {self.X_turbo} y {self.train_Y}")
-            def add_spectrum_norm(module, normalize=False):
-                if normalize:
-                    return torch.nn.utils.parametrizations.spectral_norm(module)
-                else:
-                    return module
 
-            class LargeFeatureExtractor(torch.nn.Sequential):
-                def __init__(self, data_dim):
-                    super(LargeFeatureExtractor, self).__init__()
-                    self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
-                    self.add_module('relu1', torch.nn.ReLU())
-                    self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
-                    self.add_module('relu2', torch.nn.ReLU())
-                    self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
-                    # test if using higher dimensions could be better
-                    if low_dim:
-                        self.add_module('relu3', torch.nn.ReLU())
-                        self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
-                    else:
-                        self.add_module('relu3', torch.nn.ReLU())
-                        self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
-
-            class GPRegressionModel(gpytorch.models.ExactGP):
-                    def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
-                        super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
-                        self.feature_extractor = gp_feature_extractor
-                        self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
-                        if low_dim:
-                            self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                                gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
-                                                                num_dims=1, grid_size=100)
-                                # outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
-                        else:
-                            self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
-
-                        # This module will scale the NN features so that they're nice values
-                        self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
-
-                    def forward(self, x):
-                        # We're first putting our data through a deep net (feature extractor)
-                        self.projected_x = self.feature_extractor(x)
-                        self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
-
-                        mean_x = self.mean_module(self.projected_x)
-                        covar_x = self.covar_module(self.projected_x)
-                        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-
-            if not self.discrete:
-                self.model = SingleTaskGP(self.X_turbo, self.train_Y, covar_module=self.covar_module, likelihood=self.likelihood)
-            else:
-                self.feature_extractor = LargeFeatureExtractor(self.dim)
-                if not (self.pretrained_nn is None):
-                    self.feature_extractor.load_state_dict(self.pretrained_nn.encoder.state_dict(), strict=False)
-                self.model = GPRegressionModel(self.X_turbo.float(), self.train_Y.float().squeeze(), self.likelihood, self.feature_extractor)
-            self.mll = ExactMarginalLogLikelihood(self.model.likelihood, self.model)
-
+            assert retrain_interval >= 1 and type(retrain_interval) is int
             # Do the fitting and acquisition function optimization inside the Cholesky context
             with gpytorch.settings.max_cholesky_size(max_cholesky_size):
                 # Fit the model
-                # print('discrete', self.discrete)
-                if not self.discrete:
-                    fit_gpytorch_model(self.mll)
-                else:
-                    self.optimizer = torch.optim.Adam([
-                        {'params': self.model.feature_extractor.parameters()},
-                        {'params': self.model.covar_module.parameters()},
-                        {'params': self.model.mean_module.parameters()},
-                        {'params': self.model.likelihood.parameters()},
-                    ], lr=self.lr)
-                    self.loss_func = lambda pred, y: -self.mll(pred, y)
-                    def train(verbose=False):
-                        iterator = tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
-                        for i in iterator:
-                            # Zero backprop gradients
-                            self.optimizer.zero_grad()
-                            # Get output from model
-                            self.output = self.model(self.X_turbo.float())
-                            # Calc loss and backprop derivatives
-                            self.loss = self.loss_func(self.output, self.train_Y.float().squeeze())
-                            self.loss.backward()
-                            self.optimizer.step()
+                if opt_iter % retrain_interval == 0:
+                    if not self.discrete:
+                        self.model = SingleTaskGP(self.X_turbo, self.train_Y, covar_module=self.covar_module, likelihood=self.likelihood)
+                    else:
+                        self.feature_extractor = self.LargeFeatureExtractor(self.dim)
+                        if not (self.pretrained_nn is None):
+                            self.feature_extractor.load_state_dict(self.pretrained_nn.encoder.state_dict(), strict=False)
+                        self.model = self.GPRegressionModel(self.X_turbo.float(), self.train_Y.float().squeeze(), self.likelihood, self.feature_extractor)
+                    self.mll = ExactMarginalLogLikelihood(self.model.likelihood, self.model)
+
+                    if not self.discrete:
+                        fit_gpytorch_model(self.mll)
+                    else:
+                        self.optimizer = torch.optim.Adam([
+                            {'params': self.model.feature_extractor.parameters()},
+                            {'params': self.model.covar_module.parameters()},
+                            {'params': self.model.mean_module.parameters()},
+                            {'params': self.model.likelihood.parameters()},
+                        ], lr=self.lr)
+                        self.loss_func = lambda pred, y: -self.mll(pred, y)
+                        def train(verbose=False):
+                            iterator = tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
+                            for i in iterator:
+                                # Zero backprop gradients
+                                self.optimizer.zero_grad()
+                                # Get output from model
+                                self.output = self.model(self.X_turbo.float())
+                                # Calc loss and backprop derivatives
+                                self.loss = self.loss_func(self.output, self.train_Y.float().squeeze())
+                                self.loss.backward()
+                                self.optimizer.step()
 
 
-                            self.model.train()
-                            self.likelihood.train()
-                        if verbose:
-                            iterator.set_postfix(loss=self.loss.item())
+                                self.model.train()
+                                self.likelihood.train()
+                            if verbose:
+                                iterator.set_postfix(loss=self.loss.item())
                     
                     # train(self.verbose)
                     # print("verbose", self.verbose)
@@ -312,7 +308,7 @@ class TuRBO():
 
         return X_next
 
-    def next_point(self, method="love", return_idx=False):
+    def next_point(self, method="love", return_idx=False, random_sample=False):
         """
         Maximize acquisition function to find next point to query
         """
@@ -325,9 +321,11 @@ class TuRBO():
         self.likelihood.eval()
         acq=self.acqf
 
-        
-        random_filter = np.random.choice(100, self.test_x.shape[0])
-        test_x = self.test_x[random_filter].to(device)
+        if random_sample:
+            random_filter = np.random.choice(100, self.test_x.shape[0])
+            test_x = self.test_x[random_filter].to(device)
+        else:
+            test_x = self.test_x.to(device)
 
         if acq.lower() == "ts":
             if method.lower() == "love":
@@ -357,7 +355,10 @@ class TuRBO():
         max_pts = torch.argmax(self.acq_val)
         candidate = test_x[max_pts]
         if return_idx:
-            return random_filter[max_pts]
+            if random_sample:
+                return random_filter[max_pts]
+            else:
+                return max_pts
         else:
             return candidate
 

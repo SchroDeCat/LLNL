@@ -54,6 +54,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--train_times", nargs='?', default=100, type=int, help="number of training iterations")
+    cli_parser.add_argument("--retrain_interval", nargs='?', default=20, type=int, help="number of interval iterations between training")
     cli_parser.add_argument("--batch-size", nargs="?", default=1, type=int,help="Batch size of each round of query")    
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
     cli_parser.add_argument("--high_dim", action="store_true", default=False, help="if using high dim latent space")
@@ -69,7 +70,7 @@ if __name__ == "__main__":
     if cli_args.datadir.endswith(".pt"):
         dataset = torch.load(cli_args.datadir)  # want to find the maximal
     elif cli_args.datadir.endswith(".npy"):
-        dataset = torch.from_numpy(np.load(cli_args.datadir))
+        dataset = torch.from_numpy(np.load(cli_args.datadir)).float()
     # ub = dataset.numpy().max(axis=0)
     # lb = dataset.numpy().min(axis=0)
     # dataset = torch.from_numpy(dataset.numpy()[:, ub>lb])
@@ -95,14 +96,14 @@ if __name__ == "__main__":
     # pretrain AE
     # print("Load AE")
     if pretrained and cli_args.a:
-        ae = AE(scaled_input_tensor, lr=1e-3)
+        ae = AE(scaled_input_tensor.float(), lr=1e-3)
         ae.train_ae(epochs=100, batch_size=200, verbose=True)
         torch.save(ae.state_dict(), cli_args.aedir)
         if cli_args.v:
             print(f"pretrained ae stored in {cli_args.aedir}")
     elif pretrained:
         assert not (cli_args.aedir is None)
-        ae = AE(scaled_input_tensor, lr=1e-3)
+        ae = AE(scaled_input_tensor.float(), lr=1e-3)
         ae.load_state_dict(torch.load(cli_args.aedir, map_location="cpu"))
     else:
         ae = None
@@ -117,14 +118,16 @@ if __name__ == "__main__":
     test_x, test_y = scaled_input_tensor, output_tensor
     batch_size = cli_args.batch_size
     reg_record = np.zeros([n_repeat, batch_size * n_iter + n_init])
+    retrain_interval = cli_args.retrain_interval
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        for idx in range(n_repeat):
-            print(f"Round {idx}")
+        for idx in tqdm(range(n_repeat), desc=f"TuRBO-{name}-discrete-{discrete}"):
+            # print(f"Round {idx}")
             if cli_args.f:
                 # print(n_init+n_repeat*n_iter)
                 # _seed = rep*n_iter + n_init
                 _seed = _random_seed_gen()[idx]
+                # _seed = idx * 20 + n_init
                 torch.manual_seed(_seed)
                 np.random.seed(_seed)
                 random.seed(_seed)
@@ -133,8 +136,9 @@ if __name__ == "__main__":
                 torch.backends.cudnn.deterministic = True
 
 
-            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, train_iter=cli_args.train_times, pretrained_nn=ae)
-            t.opt(n_iter, low_dim = not cli_args.high_dim)
+            t = TuRBO(test_x, test_y, n_init=n_init, verbose=verbose, discrete=discrete, batch_size=batch_size, 
+                      low_dim = not cli_args.high_dim, train_iter=cli_args.train_times, pretrained_nn=ae)
+            t.opt(n_iter, cli_args.retrain_interval)
             reg_record[idx] = t.regret.squeeze()
 
     if cli_args.p:
@@ -142,7 +146,7 @@ if __name__ == "__main__":
 
 
     if cli_args.s:
-        np.save(f"{save_path}/turbo{'-bo' if not discrete else ''}{'-hd' if cli_args.high_dim else ''}-{name}-R{n_repeat}-T{n_iter}.npy", reg_record)
+        np.save(f"{save_path}/turbo{'-bo' if not discrete else ''}{'-hd' if cli_args.high_dim else ''}-{name}-R{n_repeat}-T{n_iter}-RI{retrain_interval}.npy", reg_record)
 
     if cli_args.p:
         plt.figure()
@@ -150,6 +154,6 @@ if __name__ == "__main__":
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/turbo{'-bo' if not discrete else ''}{'-hd' if cli_args.high_dim else ''}-{name}-R{n_repeat}-T{n_iter}"
+        _path = f"{save_path}/turbo{'-bo' if not discrete else ''}{'-hd' if cli_args.high_dim else ''}-{name}-R{n_repeat}-T{n_iter}-RI{retrain_interval}"
         plt.savefig(f"{_path}.png")
         plt.close()
