@@ -445,8 +445,11 @@ class DKL():
             '''
             Either Thompson Sampling or Monte-Carlo EI
             '''
-            _num_sample = 100 if acq.lower() == 'qei' else 1
-            # _num_sample = 5 if acq.lower() == 'qei' else 1
+            _num_sample = 100 if acq.lower() == 'qei' else 1 # iter 5
+            # _num_sample = 20 if acq.lower() == 'qei' else 1 # iter 6
+            # _num_sample = 10 if acq.lower() == 'qei' else 1 # iter 7
+            # _num_sample = 5 if acq.lower() == 'qei' else 1 # iter 8
+            # _num_sample = 2 if acq.lower() == 'qei' else 1 # iter 9
             if method.lower() == "love":
                 with torch.no_grad(), gpytorch.settings.fast_pred_var(), gpytorch.settings.max_root_decomposition_size(200):
                     # NEW FLAG FOR SAMPLING

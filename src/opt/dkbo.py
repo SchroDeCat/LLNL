@@ -80,7 +80,7 @@ class DK_BO():
             self.dkl.train_model()
         
 
-    def query(self, n_iter:int=10):
+    def query(self, n_iter:int=10, interval:int=10):
         self.regret = np.zeros(n_iter)
         iterator = tqdm.notebook.tqdm(range(n_iter))
         for i in iterator:
@@ -91,7 +91,9 @@ class DK_BO():
             # retrain
             self.dkl = DKL(self.init_x, self.init_y.squeeze(), lr=self.lr, n_iter=self.train_iter, low_dim=True)
             # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
-            self.train()
+            if i % interval == 0:
+                self.train()
+
             # regret
             self.regret[i] = self.maximum - torch.max(self.init_y)
             if self.regret[i] < 1e-10:
