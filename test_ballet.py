@@ -65,7 +65,8 @@ class Configuration():
         self.beta=beta  # true beta
         # self.filter_interval=10 if horizon > 100 else horizon //10
         # self.filter_interval=1
-        self.filter_interval=1 if horizon <= 100 else 40
+        # self.filter_interval=1 if horizon <= 100 else 40
+        self.filter_interval=1 if horizon <= 100 else 20
         self.retrain_interval=retrain_interval
         self.opt_horizon=horizon
         self.train_times=train_time
@@ -180,7 +181,12 @@ if __name__ == "__main__":
     exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':20,}]
     exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':100,}]
 
-    exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.01,  "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':10},]
+    # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.01,  "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':10},]
+    # exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.01,  "horizon":300, "high_dim": True, 'train_iter':5, 'retrain_interval':10},]
+    exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.01,  "horizon":300, "high_dim": False, 'train_iter':1, 'retrain_interval':20},
+            {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.01,  "horizon":300, "high_dim": False, 'train_iter':1, 'retrain_interval':40},]
+    exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.008,  "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':10},] 
+    exps = [{"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":.008,  "horizon":300, "high_dim": False, 'train_iter':5, 'retrain_interval':100},] 
     # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':6}]
     # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':7}]
     # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':8}]
@@ -269,7 +275,7 @@ if __name__ == "__main__":
                 # continue
                 for intersection in [True, False]:
                     # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci', 'qei']
-                    acqs = [ 'ucb'] if intersection else ['ts', 'ucb']
+                    # acqs = [ 'ucb'] if intersection else ['ts', 'ucb']
                     # if not intersection:
                         # continue
                     # acqs = ['ci']
@@ -280,7 +286,7 @@ if __name__ == "__main__":
                     # acqs = ['qei', 'ts']
                     # acqs = ['ts']
                     # acqs = ['qei']
-                    # acqs = []
+                    acqs = []
 
                     for acq in acqs:
                         print(acq, exp, "ballet", ballet, 'intersection', intersection)
@@ -294,7 +300,8 @@ if __name__ == "__main__":
                 # acqs = ['ts']
                 # acqs = [ 'qei']
                 # acqs = []
-                acqs = ['ts','ucb']
+                # acqs = ['ts','ucb']
+                acqs = ['ci']
                 for acq in acqs:
                     print(acq, exp, "ballet", ballet)
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], retrain_interval=exp['retrain_interval'],
