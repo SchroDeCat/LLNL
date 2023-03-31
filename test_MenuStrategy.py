@@ -55,19 +55,22 @@ def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_r
 
         observed_y = []
         x_init, y_init = x_tensor[:n_init], y_tensor[:n_init]
-
-        _dkbo_olp_batch = DKBO_OLP_MenuStrategy(x_tensor=x_init, y_tensor=y_init, partition_strategy=init_strategy, num_GP=num_GP,
-                                                train_times=train_times, acq=acq, verbose=verbose, lr=lr, name=name, ucb_strategy=ucb_strategy,
-                                                train=True, pretrained=pretrained, ae_loc=ae_loc)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _dkbo_olp_batch = DKBO_OLP_MenuStrategy(x_tensor=x_init, y_tensor=y_init, partition_strategy=init_strategy, num_GP=num_GP,
+                                                    train_times=train_times, acq=acq, verbose=verbose, lr=lr, name=name, ucb_strategy=ucb_strategy,
+                                                    train=True, pretrained=pretrained, ae_loc=ae_loc)
 
         assert n_iter % batch_size == 0
-        iterator = tqdm.tqdm(range(0, n_iter, batch_size), desc=f"R {r}") if verbose else range(0, n_iter, batch_size)
+        iterator = tqdm.tqdm(range(0, n_iter, batch_size), desc=f"R {r}")
+        # iterator = tqdm.tqdm(range(0, n_iter, batch_size), desc=f"R {r}") if verbose else range(0, n_iter, batch_size)
 
         for t in iterator:
             candidates_idx, _, _, _ = _dkbo_olp_batch.select(x_tensor, i=0, k=batch_size)
             _x_query, y_query = x_tensor[candidates_idx], y_tensor[candidates_idx]
             _dkbo_olp_batch.update(X=_x_query, y=y_query)
             observed_y.extend([val.item() for val in y_query])
+            iterator.set_postfix({"regret": obj - np.maximum.accumulate(observed_y)[-1]})
 
         regret[r] = obj - np.maximum.accumulate(observed_y)
     

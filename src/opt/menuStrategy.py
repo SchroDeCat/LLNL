@@ -49,6 +49,10 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler, RobustScaler
 # from abag_model_development.models.active_learning.base_strategy import BaseStrategy, MenuStrategy
 
+warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.simplefilter(action='ignore')
+
+
 class LargeFeatureExtractor(torch.nn.Sequential):
     def __init__(self, data_dim, low_dim, add_spectrum_norm):
         
@@ -156,7 +160,7 @@ class DKL():
                 return module
 
 
-        self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim)
+        self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim, add_spectrum_norm=add_spectrum_norm)
         if not (pretrained_nn is None):
             self.feature_extractor.load_state_dict(pretrained_nn.encoder.state_dict(), strict=False)
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
@@ -787,7 +791,7 @@ class DKBO_OLP(MenuStrategy):
         location of the pretrained Auto Encoder.
     '''
 
-    def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="kmeans-y", num_GP:int=3, 
+    def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="kmeans-y", num_GP:int=3, low_dim:bool=True,
                     train_times:int=10, acq:str="ts", verbose:bool=True, lr:float=1e-2, name:str="test", ucb_strategy:str="exact",
                     train:bool=True, pretrained:bool=False, ae_loc:str=None, abag_transform=False):
         '''
@@ -825,6 +829,7 @@ class DKBO_OLP(MenuStrategy):
         self.ucb_strategy = ucb_strategy
         self.pretrained = pretrained
         self.ae_loc = ae_loc
+        self.low_dim = low_dim
         # super().__init__(name=name, model=None, train=train, iters=train_times)
         self.iters = train_times
         self.train = train
@@ -847,8 +852,8 @@ class DKBO_OLP(MenuStrategy):
         self.init_x = x_tensor
         self.init_y = y_tensor
         self.n_init = self.init_x.size(0)
-        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=True)
-        self._dkl.train_model()
+        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim)
+        self._dkl.train_model(verbose=verbose)
         self._dkl.model.eval()
 
     def fit(self,X,y,**kwargs):
@@ -917,7 +922,7 @@ class DKBO_OLP(MenuStrategy):
             self.num_GP = 2 # override input parameter
             lcb, ucb = self._dkl.CI(x_tensor.to(self.device))
             _delta = kwargs.get("delta", 0.2)
-            _filter_beta = kwargs.get("filter_beta", 0.05)
+            _filter_beta = kwargs.get("filter_beta", 0.1)
             _beta = (2 * np.log((x_tensor.shape[0] * (np.pi * (self.n_init + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
             _filter_lcb, _filter_ucb = beta_CI(lcb, ucb, _filter_beta)
             ucb_filter = _filter_ucb >= _filter_lcb.max()
@@ -1006,9 +1011,9 @@ class DKBO_OLP(MenuStrategy):
         self.init_x = torch.cat([self.init_x, X])
         self.init_y = torch.cat([self.init_y, y])
         self.n_init = self.init_x.size(0)
-        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=True)
+        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim)
         # settings to print NLL
-        self._dkl.train_model(record_mae=True, record_interval=1, verbose=True)
+        self._dkl.train_model(record_mae=True, record_interval=1, verbose=self.verbose)
         self._dkl.model.eval()
 
     def select_from_menu_df(self, menu_df, target_df, predictor_cols, type_col,
