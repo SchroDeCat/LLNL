@@ -1,4 +1,5 @@
 from email import iterators
+from pydoc import describe
 import gpytorch
 import os
 import random
@@ -31,7 +32,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from src.models import AE
 from src.utils import save_res, _path, _random_seed_gen, Data_Factory
-from src.opt import pure_dkbo, DKBO_OLP_MenuStrategy, RandomOpt
+# from src.opt import pure_dkbo, DKBO_OLP_MenuStrategy, RandomOpt
 from src.lamcts import MCTS
 
 
@@ -49,6 +50,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("-n", action="store_true", default=False, help="flag of if negate the obj value to maximize")
     cli_parser.add_argument("-f",  action="store_true", default=False, help="flag of if using fixed seed")
     cli_parser.add_argument("--init_num", nargs='?', default=10, type=int, help="number of initial random points")
+    cli_parser.add_argument("--retrain_interval", nargs='?', default=10, type=int, help="number of retrain interval")
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
     cli_parser.add_argument("--opt_horizon", nargs='?', default=40, type=int, help="horizon of the optimization")
     cli_parser.add_argument("--leaf_size", nargs='?', default=10, type=int, help="leaf size of MCTS")
@@ -138,6 +140,7 @@ if __name__ == "__main__":
     save_path = cli_args.subdir
     n_repeat = cli_args.run_times
     n_iter = cli_args.opt_horizon
+    retrain_interval = cli_args.retrain_interval
     # init_x = dataset[:cli_args.init_num,:-1]
     # init_y = approx_obj_func(init_x)
     # print(f"init max {init_y.max()} {dataset[:cli_args.init_num,-1].max()} global maximum {dataset[:,-1].max()}")
@@ -149,7 +152,8 @@ if __name__ == "__main__":
     max_retry = 10
 
     # print(solver_type)
-    while t < times:
+    # while t < times:
+    for t in tqdm.tqdm(range(times), desc=f'La-MCTS {solver_type}'):
         if cli_args.f:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -164,7 +168,7 @@ if __name__ == "__main__":
                 torch.backends.cudnn.deterministic = True
 
         # the algorithm is minimization
-        try:
+        # try:
         # if True:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -182,14 +186,15 @@ if __name__ == "__main__":
                         solver_type= solver_type,    # either "bo" or "turbo"
                         verbose = verbose,          # if printing verbose messages
                         pretrained_nn = ae,
+                        retrain_interval=retrain_interval,
                         )
 
                 agent.search(iterations = cli_args.opt_horizon)
-        except Exception as e:
-            print(f"Failed {t}: {e} ")
-            t = t+1
-            times = min(times + 1, n_repeat + max_retry)
-            continue
+        # except Exception as e:
+        #     print(f"Failed {t}: {e} ")
+        #     t = t+1
+        #     times = min(times + 1, n_repeat + max_retry)
+        #     continue
         
 
         values = [sample[1] for sample in agent.samples]
@@ -199,7 +204,7 @@ if __name__ == "__main__":
         idx = idx + 1
 
     if cli_args.s:
-        np.save(f"{save_path}/lamcts-{solver_type}-{name}-R{n_repeat}-P{1}-T{n_iter}.npy", reg_record)
+        np.save(f"{save_path}/lamcts-{solver_type}-{name}-R{n_repeat}-P{1}-T{n_iter}-RI{retrain_interval}.npy", reg_record)
         # opt.store_results(cli_args.subdir)
         pass
     if cli_args.p:
@@ -208,7 +213,7 @@ if __name__ == "__main__":
         plt.ylabel("regret")
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
-        _path = f"{save_path}/lamcts-{solver_type}-{name}-R{n_repeat}-P{1}-T{n_iter}"
+        _path = f"{save_path}/lamcts-{solver_type}-{name}-R{n_repeat}-P{1}-T{n_iter}-RI{retrain_interval}"
         plt.savefig(f"{_path}.png")
         # opt.plot_results(cli_args.subdir)
         plt.close()

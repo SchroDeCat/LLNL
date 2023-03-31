@@ -26,7 +26,7 @@ import torch
 class MCTS:
     #############################################
 
-    def __init__(self, lb, ub, dims, dataset, ninits, func, Cp = 1, leaf_size = 20, 
+    def __init__(self, lb, ub, dims, dataset, ninits, func, Cp = 1, leaf_size = 20, retrain_interval:int=10,
             kernel_type = "rbf", gamma_type = "auto", solver_type = "bo", verbose=True, pretrained_nn=None):
         self.pretrained_nn           =  pretrained_nn
         self.dims                    =  dims
@@ -48,7 +48,7 @@ class MCTS:
         self.LEAF_SAMPLE_SIZE        =  leaf_size
         self.kernel_type             =  kernel_type
         self.gamma_type              =  gamma_type
-        
+        self.retrain_interval        = retrain_interval
         self.solver_type             = solver_type #solver can be 'bo' or 'turbo'
         
         # print("gamma_type:", gamma_type)
@@ -247,7 +247,7 @@ class MCTS:
 
     def search(self, iterations):
         # iterator = tqdm.tqdm(range(self.sample_counter, iterations)) if self.verbose else range(self.sample_counter, iterations)
-        iterator = tqdm.tqdm(range(self.sample_counter, iterations))
+        iterator = tqdm.tqdm(range(self.sample_counter, iterations, self.retrain_interval))
         for idx in iterator:
             if self.verbose:
                 print("")
@@ -257,17 +257,18 @@ class MCTS:
             self.dynamic_treeify()
             leaf, path = self.select()
             for i in range(0, 1):
+                num_sample = min(self.retrain_interval, iterations-idx)
                 if self.solver_type == 'bo':
                     # samples = leaf.propose_samples_bo( 1, path, self.lb, self.ub, self.samples, x=self.dataset[:,:-1] )
-                    samples = leaf.propose_samples_bo( 1, path, self.lb, self.ub, self.samples, x=None )
+                    samples = leaf.propose_samples_bo(num_sample, path, self.lb, self.ub, self.samples, x=None )
                 elif self.solver_type == 'turbo':
                     # samples, values = leaf.propose_samples_turbo( 10000, path, self.func )
-                    samples, values = leaf.propose_samples_turbo(1, path, self.func )
+                    samples, values = leaf.propose_samples_turbo(num_sample, path, self.func )
                 elif self.solver_type == 'dkbo':
-                    samples, _ = leaf.propose_samples_dkbo(num_samples=1, path=path, dataset=self.dataset, 
+                    samples, _ = leaf.propose_samples_dkbo(num_samples=num_sample, path=path, dataset=self.dataset, 
                                         samples=self.samples, pretrained_nn=self.pretrained_nn, func=self.func)
                 elif self.solver_type == 'dkbo-hd':
-                    samples, _ = leaf.propose_samples_dkbo(num_samples=1, path=path, dataset=self.dataset, 
+                    samples, _ = leaf.propose_samples_dkbo(num_samples=num_sample, path=path, dataset=self.dataset, 
                                         samples=self.samples, pretrained_nn=self.pretrained_nn, func=self.func, high_dim=True)
                     
                 else:
@@ -291,7 +292,7 @@ class MCTS:
                 # print("current best x:", np.around(self.curt_best_sample, decimals=1) )
                 print("current best x:", self.curt_best_sample )
             
-            iterator.set_postfix({"current best f(x)": self.curt_best_value})
+            iterator.set_postfix({"current best f(x)": self.curt_best_value, 'sample size': len(samples), "sample": num_sample})
 
 
 

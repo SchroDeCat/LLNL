@@ -133,7 +133,10 @@ class DKL():
                 def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
                     super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
                     self.feature_extractor = gp_feature_extractor
-                    self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                    try: # gpytorch 1.6.0 support
+                        self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                    except Exception: # gpytorch 1.9.1
+                        self.mean_module = gpytorch.means.ConstantMean()
                     if low_dim:
                         self.covar_module = gpytorch.kernels.GridInterpolationKernel(
                             gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
@@ -166,7 +169,10 @@ class DKL():
                         self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
                     else:
                         self.covar_module = gpytorch.kernels.LinearKernel(num_dims=train_x.size(-1))
-                    self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                    try: # gpytorch 1.6.0 support
+                        self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
+                    except Exception: # gpytorch 1.9.1
+                        self.mean_module = gpytorch.means.ConstantMean()
                     # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
                     #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
                     #     num_dims=train_x.size(-1), grid_size=1000)

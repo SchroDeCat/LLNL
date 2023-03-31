@@ -96,6 +96,7 @@ class DK_BO_AE():
         self.regret = np.zeros(n_iter)
         self.interval = np.zeros(n_iter)
         if_tqdm = kwargs.get("if_tqdm", False)
+        early_stop = kwargs.get("early_stop", True)
         iterator = tqdm.tqdm(range(n_iter)) if if_tqdm else range(n_iter)
         study_interval = kwargs.get("study_interval", 10)
         _path = kwargs.get("study_res_path", None)
@@ -160,7 +161,7 @@ class DK_BO_AE():
 
             # regret & interval
             self.regret[i] = self.maximum - torch.max(self.init_y)
-            if self.regret[i] < 1e-10:
+            if self.regret[i] < 1e-10 and early_stop:
                 break
             if if_tqdm:
                 iterator.set_postfix({"regret":self.regret[i], "Internal_beta": beta})
