@@ -14,6 +14,8 @@ import datetime
 import itertools
 
 # from src.utils import beta_CI
+from .exact_gp import ExactGPRegressionModel
+from .module import LargeFeatureExtractor, GPRegressionModel
 from .sgld import SGLD
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
@@ -37,7 +39,6 @@ def beta_CI(lcb, ucb, beta):
     _ucb_scaled = (ucb - lcb) / 4 * (beta-2) + ucb
     _lcb_scaled = (ucb - lcb) / 4 * (2-beta) + lcb
     return _lcb_scaled, _ucb_scaled
-
 
 class DKL():
 
@@ -80,48 +81,7 @@ class DKL():
             else:
                 return module
 
-        # class LargeFeatureExtractor(torch.nn.Sequential):
-        #     def __init__(self, data_dim, low_dim):
-        #         super(LargeFeatureExtractor, self).__init__()
-        #         self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
-        #         self.add_module('relu1', torch.nn.Sigmoid())
-        #         self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
-        #         self.add_module('relu2', torch.nn.Tanh())
-        #         self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 250)))
-        #         self.add_module('relu3', torch.nn.Sigmoid())
-        #         self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(250, 125)))
-        #         self.add_module('relu4', torch.nn.Sigmoid())
-        #         self.add_module('linear5',  add_spectrum_norm(torch.nn.Linear(125, 62)))
-        #         self.add_module('relu5', torch.nn.Sigmoid())
-        #         self.add_module('linear6',  add_spectrum_norm(torch.nn.Linear(62, 30)))
-        #         self.add_module('relu6', torch.nn.Sigmoid())
-        #         self.add_module('linear7',  add_spectrum_norm(torch.nn.Linear(30, 15)))
-        #         self.add_module('relu7', torch.nn.Sigmoid())
-
-        #         # test if using higher dimensions could be better
-        #         if low_dim:
-        #             self.add_module('linear8',  add_spectrum_norm(torch.nn.Linear(15, 1)))
-        #         else:
-        #             self.add_module('linear8',  add_spectrum_norm(torch.nn.Linear(15, 10)))
-
-        class LargeFeatureExtractor(torch.nn.Sequential):
-            def __init__(self, data_dim, low_dim):
-                super(LargeFeatureExtractor, self).__init__()
-                self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
-                self.add_module('relu1', torch.nn.ReLU())
-                self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
-                self.add_module('relu2', torch.nn.ReLU())
-                self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
-                # test if using higher dimensions could be better
-                if low_dim:
-                    self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
-                else:
-                    self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
-
-
-        self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim)
+        self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim, add_spectrum_norm=add_spectrum_norm)
         if not (pretrained_nn is None):
             # print(self.feature_extractor.state_dict())
             # print(pretrained_nn.state_dict())
@@ -129,72 +89,10 @@ class DKL():
             # print(self.feature_extractor, pretrained_nn)
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
 
-        class GPRegressionModel(gpytorch.models.ExactGP):
-                def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
-                    super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
-                    self.feature_extractor = gp_feature_extractor
-                    try: # gpytorch 1.6.0 support
-                        self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
-                    except Exception: # gpytorch 1.9.1
-                        self.mean_module = gpytorch.means.ConstantMean()
-                    if low_dim:
-                        self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1), 
-                            outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
-                            num_dims=1, grid_size=100)
-                    else:
-                        self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
-
-                    # This module will scale the NN features so that they're nice values
-                    self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
-
-                def forward(self, x):
-                    # We're first putting our data through a deep net (feature extractor)
-                    self.projected_x = self.feature_extractor(x)
-                    self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
-
-                    mean_x = self.mean_module(self.projected_x)
-                    covar_x = self.covar_module(self.projected_x)
-                    return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-
-        class ExactGPRegressionModel(gpytorch.models.ExactGP):
-                def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
-                    '''
-                    Exact GP:
-                    Leave placeholder for gp_feature_extractor
-                    '''
-                    super(ExactGPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
-                    # self.mean_module = gpytorch.means.ZeroMean()
-                    if low_dim:
-                        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
-                    else:
-                        self.covar_module = gpytorch.kernels.LinearKernel(num_dims=train_x.size(-1))
-                    try: # gpytorch 1.6.0 support
-                        self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
-                    except Exception: # gpytorch 1.9.1
-                        self.mean_module = gpytorch.means.ConstantMean()
-                    # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                    #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
-                    #     num_dims=train_x.size(-1), grid_size=1000)
-                    # self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                    #     gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1),
-                    #     outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
-                    #     num_dims=train_x.size(-1), grid_size=100)
-
-                    # This module will scale the NN features so that they're nice values
-                    self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
-
-                def forward(self, x):
-                    self.projected_x = x
-                    # self.projected_x = self.scale_to_bounds(x)  # Make the values "nice"
-
-                    mean_x = self.mean_module(self.projected_x)
-                    covar_x = self.covar_module(self.projected_x)
-                    return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
         self.GPRegressionModel = GPRegressionModel if not self.exact else ExactGPRegressionModel
-        self.model = self.GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor)
-        if low_dim:
+        self.model = self.GPRegressionModel(self.train_x, self.train_y, self.likelihood, self.feature_extractor, low_dim=self.low_dim)
+        if self.low_dim:
             self.model.covar_module.base_kernel.outputscale = self.output_scale
 
         if self.cuda:
