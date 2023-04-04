@@ -34,7 +34,7 @@ from src.utils import save_res, _path, _random_seed_gen
 from src.opt import pure_dkbo, DKBO_OLP as DKBO_OLP_MenuStrategy
 
 def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_repeat=2, num_GP=2, train_times=10, batch_size:int=5,
-                    n_iter=40, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, ucb_strategy="exact",
+                    n_iter=40, acq="ts", verbose=True, lr=1e-2, name="test", return_result=True, ucb_strategy="exact", fbeta:float=.2, exact_gp:bool=False,
                     plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None):
     '''
     Test the batched DKBO-OLP
@@ -59,14 +59,14 @@ def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_r
             warnings.simplefilter("ignore")
             _dkbo_olp_batch = DKBO_OLP_MenuStrategy(x_tensor=x_init, y_tensor=y_init, partition_strategy=init_strategy, num_GP=num_GP,
                                                     train_times=train_times, acq=acq, verbose=verbose, lr=lr, name=name, ucb_strategy=ucb_strategy,
-                                                    train=True, pretrained=pretrained, ae_loc=ae_loc)
+                                                    train=True, pretrained=pretrained, ae_loc=ae_loc, exact_gp=exact_gp)
 
         assert n_iter % batch_size == 0
         iterator = tqdm.tqdm(range(0, n_iter, batch_size), desc=f"R {r}")
         # iterator = tqdm.tqdm(range(0, n_iter, batch_size), desc=f"R {r}") if verbose else range(0, n_iter, batch_size)
 
         for t in iterator:
-            candidates_idx, _, _, _ = _dkbo_olp_batch.select(x_tensor, i=0, k=batch_size)
+            candidates_idx, _, _, _ = _dkbo_olp_batch.select(x_tensor, i=0, k=batch_size, fbeta=fbeta)
             _x_query, y_query = x_tensor[candidates_idx], y_tensor[candidates_idx]
             _dkbo_olp_batch.update(X=_x_query, y=y_query)
             observed_y.extend([val.item() for val in y_query])
@@ -77,7 +77,7 @@ def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_r
 
     reg_output_record = regret.mean(axis=0)
     
-    name = f"{name}-B{batch_size}"
+    name = f"{name}-B{batch_size}-fbeta{fbeta}{'-Exact-GP' if exact_gp else '-DK'}"
     if save_result:
         assert not (save_path is None)
         save_res(save_path=save_path, name=name, res=regret, n_repeat=n_repeat, num_GP=num_GP, n_iter=n_iter, train_iter=train_times,
@@ -89,9 +89,10 @@ def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_r
         plt.xlabel("Iteration")
         plt.title(f'simple regret for {name}')
         _img_path = _path(save_path, name, init_strategy, n_repeat, num_GP, n_iter, 0, acq, lr, train_times, ucb_strategy)
-        plt.savefig(_img_path)
+        plt.savefig(f"{_img_path}.png")
         if verbose:
             print(f"IMG saved to {_img_path}")
+        plt.close()
 
 
     if return_result:
@@ -111,6 +112,7 @@ if __name__ == "__main__":
     cli_parser.add_argument("-s",  action="store_true", default=False, help="flag of if storing result")
     cli_parser.add_argument("-n", action="store_true", default=False, help="flag of if negate the obj value to maximize")
     cli_parser.add_argument("-o", action="store_true", default=False, help="if partition the space")
+
     cli_parser.add_argument("--learning_rate", nargs='?', default=2, type=int, help="rank of the learning rate")
     cli_parser.add_argument("--init_num", nargs='?', default=10, type=int, help="number of initial random points")
     cli_parser.add_argument("--run_times", nargs='?', default=5, type=int, help="run times of the tests")
@@ -121,6 +123,10 @@ if __name__ == "__main__":
     cli_parser.add_argument("--clustering", nargs='?', default="kmeans-y", type=str, help="cluster strategy")
     cli_parser.add_argument("--n_partition", nargs='?', default=2, type=int, help="number of partition")
     cli_parser.add_argument("--ucb_strategy", nargs='?', default="max", type=str, help="strategy to combine ucbs")
+
+    cli_parser.add_argument("--exact_gp", action="store_true", default=False, help="if using exact GP or DK")
+    cli_parser.add_argument("--fbeta", nargs='?', default=.2, type=float, help="filtering factor")
+
     
     
     cli_args = cli_parser.parse_args()
@@ -158,10 +164,10 @@ if __name__ == "__main__":
             print(f"pretrained ae stored in {cli_args.aedir}")
 
 
-    print(f"Learning rate {learning_rate} Partition {cli_args.o} ucb strategy {cli_args.ucb_strategy}")
+    print(f"Learning rate {learning_rate} Partition {cli_args.o} ucb strategy {cli_args.ucb_strategy} Exact GP {cli_args.exact_gp} fbeta {cli_args.fbeta}")
     if cli_args.o:
         _batched_test(x_tensor=scaled_input_tensor, y_tensor=train_output, init_strategy=cli_args.clustering, n_init=cli_args.init_num, n_repeat=cli_args.run_times, num_GP=cli_args.n_partition, batch_size=cli_args.batch_size,
-                        n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times,
+                        n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times, exact_gp=cli_args.exact_gp, fbeta=cli_args.fbeta,
                         plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir, ucb_strategy=cli_args.ucb_strategy)
     else:
         pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, 

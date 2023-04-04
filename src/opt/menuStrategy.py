@@ -88,11 +88,13 @@ class DKBO_OLP(MenuStrategy):
         if using pretrained model to initialize the feature extracter of the DKL.
     ae_loc:
         location of the pretrained Auto Encoder.
+    exact_gp:
+        if using exact_gp or Deep Kernel
     '''
 
-    def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="kmeans-y", num_GP:int=3, low_dim:bool=True,
+    def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="ballet", num_GP:int=3, low_dim:bool=True,
                     train_times:int=10, acq:str="ts", verbose:bool=True, lr:float=1e-2, name:str="test", ucb_strategy:str="exact",
-                    train:bool=True, pretrained:bool=False, ae_loc:str=None, abag_transform=False):
+                    train:bool=True, pretrained:bool=False, ae_loc:str=None, abag_transform=False, exact_gp:bool=False):
         '''
         Args:
             @x_tensor: init x
@@ -129,6 +131,7 @@ class DKBO_OLP(MenuStrategy):
         self.pretrained = pretrained
         self.ae_loc = ae_loc
         self.low_dim = low_dim
+        self.exact_gp = exact_gp
         # super().__init__(name=name, model=None, train=train, iters=train_times)
         self.iters = train_times
         self.train = train
@@ -151,7 +154,7 @@ class DKBO_OLP(MenuStrategy):
         self.init_x = x_tensor
         self.init_y = y_tensor
         self.n_init = self.init_x.size(0)
-        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim)
+        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim,  pretrained_nn=self.ae, exact_gp=self.exact_gp)
         self._dkl.train_model(verbose=verbose)
         self._dkl.model.eval()
 
@@ -221,7 +224,7 @@ class DKBO_OLP(MenuStrategy):
             self.num_GP = 2 # override input parameter
             lcb, ucb = self._dkl.CI(x_tensor.to(self.device))
             _delta = kwargs.get("delta", 0.2)
-            _filter_beta = kwargs.get("filter_beta", 0.1)
+            _filter_beta = kwargs.get("filter_beta", 0.2)
             _beta = (2 * np.log((x_tensor.shape[0] * (np.pi * (self.n_init + 1)) ** 2) /(6 * _delta))) ** 0.5 # analytic beta
             _filter_lcb, _filter_ucb = beta_CI(lcb, ucb, _filter_beta)
             ucb_filter = _filter_ucb >= _filter_lcb.max()
@@ -310,7 +313,7 @@ class DKBO_OLP(MenuStrategy):
         self.init_x = torch.cat([self.init_x, X])
         self.init_y = torch.cat([self.init_y, y])
         self.n_init = self.init_x.size(0)
-        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim)
+        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim,  pretrained_nn=self.ae, exact_gp=self.exact_gp)
         # settings to print NLL
         self._dkl.train_model(record_mae=True, record_interval=1, verbose=self.verbose)
         self._dkl.model.eval()
