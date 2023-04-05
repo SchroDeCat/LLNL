@@ -67,10 +67,11 @@ def _batched_test(x_tensor, y_tensor, init_strategy:str="kmeans", n_init=10, n_r
 
         for t in iterator:
             candidates_idx, _, _, _ = _dkbo_olp_batch.select(x_tensor, i=0, k=batch_size, fbeta=fbeta)
+            filter_ratio = sum(_dkbo_olp_batch.cluster_filter_list[-1]) / _dkbo_olp_batch.cluster_filter_list[-1].shape[0]
             _x_query, y_query = x_tensor[candidates_idx], y_tensor[candidates_idx]
             _dkbo_olp_batch.update(X=_x_query, y=y_query)
             observed_y.extend([val.item() for val in y_query])
-            iterator.set_postfix({"regret": obj - np.maximum.accumulate(observed_y)[-1]})
+            iterator.set_postfix({"regret": obj - np.maximum.accumulate(observed_y)[-1], 'filter_ratio': filter_ratio})
 
         regret[r] = obj - np.maximum.accumulate(observed_y)
     
