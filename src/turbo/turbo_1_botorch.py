@@ -59,6 +59,7 @@ class TuRBO():
             return train_y[index]
         self.maximum = train_y.max()
         # low_dim=False
+        self.low_dim = low_dim
         self.dim = train_x.size(1)
         self.training_iterations = train_iter
         # print("train iter", self.training_iterations)
@@ -194,9 +195,9 @@ class TuRBO():
                             if verbose:
                                 iterator.set_postfix(loss=self.loss.item())
                     
-                    # train(self.verbose)
-                    # print("verbose", self.verbose)
-                    train(verbose=False)
+                        # train(self.verbose)
+                        # print("verbose", self.verbose)
+                        train(verbose=False)
                 # iterator.set_description(f'ML (loss={self.loss:.4})')
             
                 # Create a batch
@@ -220,7 +221,10 @@ class TuRBO():
                 # print(
                 #     f"{len(self.X_turbo)}) Best value: {self.state.best_value:.2e}, TR length: {self.state.length:.2e}"
                 # )
-                iterator.set_postfix_str(f"({len(self.X_turbo)}) Regret: {self.maximum - self.state.best_value:.2e}, TR length: {self.state.length:.2e}")
+                ver_info = f"({len(self.X_turbo)}) Regret: {self.maximum - self.state.best_value:.2e}, TR length: {self.state.length:.2e}"
+                if self.discrete:
+                    ver_info = ver_info + f" filter ratio {self.filter_ratio}"
+                iterator.set_postfix_str(ver_info)
             self.regret = self.maximum - np.maximum.accumulate(self.Y_turbo)
               
     def update_state(self,):
@@ -247,6 +251,43 @@ class TuRBO():
         self.state = state
         return state
 
+    def update_trust_region(self):
+        '''
+        Update the lower and upper bound of the trust region
+        '''
+        state=self.state
+        model=self.model
+        X=self.X_turbo
+        Y=self.train_Y # normalized self.Y_turbo
+        batch_size=self.batch_size
+        n_candidates=self.N_CANDIDATES
+        num_restarts=self.NUM_RESTARTS
+        raw_samples=self.RAW_SAMPLES
+        acqf=self.acqf
+        # Scale the TR to be proportional to the lengthscales
+        x_center = X[Y.argmax(), :].clone()
+        if not self.discrete:
+            weights = model.covar_module.base_kernel.lengthscale.squeeze().detach()
+            weights_len = len(weights)
+        else:
+            # weights = torch.ones(1) * 1
+            # deep kernel
+            if self.low_dim:
+                weights = model.covar_module.base_kernel.base_kernel.lengthscale.squeeze().detach()
+            else:
+                # linear kernel as base kernel
+                weights = 1
+            weights_len = 1
+        weights = weights.mean() * 5
+        # weights = weights / weights.mean()
+        # weights = weights / torch.prod(weights.pow(1.0 / weights_len))
+        self.x_center = x_center
+        self.tr_lb = x_center - weights * state.length
+        self.tr_ub = x_center + weights * state.length
+        # self.tr_lb = torch.clamp(x_center - weights * state.length / 2.0, 0.0, 1.0)
+        # self.tr_ub = torch.clamp(x_center + weights * state.length / 2.0, 0.0, 1.0)
+        return self.tr_lb, self.tr_ub, self.x_center
+
     def generate_batch(self):
         state=self.state
         model=self.model
@@ -265,12 +306,8 @@ class TuRBO():
             n_candidates = min(5000, max(2000, 200 * X.shape[-1]))
 
         # Scale the TR to be proportional to the lengthscales
-        x_center = X[Y.argmax(), :].clone()
-        weights = model.covar_module.base_kernel.lengthscale.squeeze().detach()
-        weights = weights / weights.mean()
-        weights = weights / torch.prod(weights.pow(1.0 / len(weights)))
-        tr_lb = torch.clamp(x_center - weights * state.length / 2.0, 0.0, 1.0)
-        tr_ub = torch.clamp(x_center + weights * state.length / 2.0, 0.0, 1.0)
+        self.update_trust_region()
+        tr_lb, tr_ub = self.tr_lb, self.tr_ub
 
         if acqf == "ts":
             dim = X.shape[-1]
@@ -288,7 +325,7 @@ class TuRBO():
             mask[ind, torch.randint(0, dim - 1, size=(len(ind),), device=device)] = 1
 
             # Create candidate points from the perturbations and the mask        
-            X_cand = x_center.expand(n_candidates, dim).clone()
+            X_cand = self.x_center.expand(n_candidates, dim).clone()
             X_cand[mask] = pert[mask]
 
             # Sample on the candidate points
@@ -321,11 +358,23 @@ class TuRBO():
         self.likelihood.eval()
         acq=self.acqf
 
+        # trust region
+        self.update_trust_region()
+        tr_lb, tr_ub = self.tr_lb, self.tr_ub
+        test_x = self.test_x
+        # print(self.x_center, self.tr_lb, self.tr_ub)
+        tr_filter = torch.sum(torch.logical_and(test_x >= tr_lb, test_x <= tr_ub), dim=-1) == test_x.size(-1)
+        self.tr_size =  torch.sum(tr_filter)
+        assert self.tr_size > 0
+        self.filter_ratio = self.tr_size / self.test_x.size(0)
+        test_x = test_x[tr_filter]
+
         if random_sample:
-            random_filter = np.random.choice(100, self.test_x.shape[0])
-            test_x = self.test_x[random_filter].to(device)
+            random_filter = np.random.choice(100, test_x.shape[0])
+            test_x = test_x[random_filter].to(device)
         else:
-            test_x = self.test_x.to(device)
+            test_x = test_x.to(device)
+
 
         if acq.lower() == "ts":
             if method.lower() == "love":
