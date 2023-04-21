@@ -147,8 +147,9 @@ class TuRBO():
 
         self.LargeFeatureExtractor, self.GPRegressionModel = LargeFeatureExtractor, GPRegressionModel
     
-    def opt(self, max_iter:int=100, retrain_interval:int=20,):
+    def opt(self, max_iter:int=100, retrain_interval:int=20, **kwargs):
         # print(self.verbose)
+        next_idcs = [None for i in range(max_iter)]
         iterator = tqdm(range(max_iter)) if self.verbose else range(max_iter)
         for opt_iter in iterator:
             self.train_Y = (self.Y_turbo - self.Y_turbo.mean()) / self.Y_turbo.std()
@@ -201,7 +202,11 @@ class TuRBO():
                 # iterator.set_description(f'ML (loss={self.loss:.4})')
             
                 # Create a batch
-                self.X_next = self.next_point() if self.discrete else self.generate_batch()
+                if 'test_x' in kwargs and self.discrete:
+                    next_idcs[opt_iter] = self.next_point(test_x=kwargs['test_x'], return_idx=True).detach().item()
+                    self.X_next = kwargs['test_x'][next_idcs[opt_iter]]
+                else:
+                    self.X_next = self.next_point() if self.discrete else self.generate_batch()
                 self.X_next = self.X_next.reshape([self.batch_size,-1])
                 # print(f"Next point {self.X_next}")
 
@@ -226,6 +231,10 @@ class TuRBO():
                     ver_info = ver_info + f" filter ratio {self.filter_ratio}"
                 iterator.set_postfix_str(ver_info)
             self.regret = self.maximum - np.maximum.accumulate(self.Y_turbo)
+        
+        if 'test_x' in kwargs:
+            # print(f'idx {next_idcs}') 
+            return next_idcs
               
     def update_state(self,):
         state=self.state
@@ -345,7 +354,7 @@ class TuRBO():
 
         return X_next
 
-    def next_point(self, method="love", return_idx=False, random_sample=False):
+    def next_point(self, method="love", return_idx=False, random_sample=False, **kwargs):
         """
         Maximize acquisition function to find next point to query
         """
@@ -361,13 +370,13 @@ class TuRBO():
         # trust region
         self.update_trust_region()
         tr_lb, tr_ub = self.tr_lb, self.tr_ub
-        test_x = self.test_x
+        test_x = kwargs.get('test_x', self.test_x)
         # print(self.x_center, self.tr_lb, self.tr_ub)
-        tr_filter = torch.sum(torch.logical_and(test_x >= tr_lb, test_x <= tr_ub), dim=-1) == test_x.size(-1)
-        self.tr_size =  torch.sum(tr_filter)
+        self.tr_filter = torch.sum(torch.logical_and(test_x >= tr_lb, test_x <= tr_ub), dim=-1) == test_x.size(-1)
+        self.tr_size =  torch.sum(self.tr_filter)
         assert self.tr_size > 0
-        self.filter_ratio = self.tr_size / self.test_x.size(0)
-        test_x = test_x[tr_filter]
+        self.filter_ratio = self.tr_size / test_x.size(0)
+        test_x = test_x[self.tr_filter]
 
         if random_sample:
             random_filter = np.random.choice(100, test_x.shape[0])
