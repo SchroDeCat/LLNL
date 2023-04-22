@@ -412,7 +412,12 @@ class DKL():
                 self.acq_val[idx] = torch.sum(_tmp_lower - lower) + torch.sum(upper - _tmp_upper)
             # print("acq value", self.acq_val.size(), self.acq_val)
     
-
+        elif acq.lower() in ['pred']:
+            # Pure exploitation with predicted mean as the acquisition function.
+            with torch.no_grad(), gpytorch.settings.fast_pred_var():
+                observed_pred = self.likelihood(self.model(test_x))
+                self.acq_val = observed_pred.mean
+                # print(self.acq_val)
         else:
             raise NotImplementedError(f"acq {acq} not implemented")
 
