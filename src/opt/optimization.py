@@ -99,7 +99,12 @@ def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_ite
         pass
 
 def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True, beta=2, retrain_interval:int=1,
-                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, exact_gp=False, study_partition=STUDY_PARTITION):
+                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, exact_gp=False, study_partition=STUDY_PARTITION, constrain_noise=False):
+    if constrain_noise:
+        global_noise_constraint = gpytorch.constraints.Interval(0.1,1.3)
+        name = f"{name}-noise_c"
+    else:
+        global_noise_constraint = None
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
 
@@ -128,8 +133,9 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
                 print("DKBO")
             sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
                                 n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
-                                max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp)
-            sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, retrain_interval=retrain_interval, beta=beta, study_res_path=save_path, if_tqdm=verbose)
+                                max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp, noise_constraint=global_noise_constraint)
+            sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, retrain_interval=retrain_interval, beta=beta, 
+                            study_res_path=save_path, if_tqdm=verbose)
             reg_record[rep, :] = sim_dkbo.regret
 
     reg_output_record = reg_record.mean(axis=0)
@@ -164,8 +170,15 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
 def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, beta=2, regularize=True, low_dim=True, spectrum_norm=False, retrain_interval=1,
                    n_iter=40, filter_interval=1, acq="ts", ci_intersection=True, verbose=True, lr=1e-2, name="test", return_result=True, retrain_nn=True,
                    plot_result=False, save_result=False, save_path=None, fix_seed=False,  pretrained=False, ae_loc=None, study_partition=STUDY_PARTITION, _minimum_pick = 10, 
-                   _delta = 0.2, filter_beta=.05, exact_gp=False):
+                   _delta = 0.2, filter_beta=.05, exact_gp=False, constrain_noise=False):
     # print(ucb_strategy)
+    if constrain_noise:
+        global_noise_constraint = gpytorch.constraints.Interval(0.7,1.3)
+        roi_noise_constraint = gpytorch.constraints.Interval(0.1,0.7)
+        name = f"{name}-noise_c"
+    else:
+        global_noise_constraint = None
+        roi_noise_constraint = None
     name = name if low_dim else name+'-hd'
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
@@ -207,7 +220,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
             init_x = x_tensor[:n_init]
             init_y = y_tensor[:n_init]
             # TBD: fix the ae loading here
-            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr, spectrum_norm=spectrum_norm, exact_gp=exact_gp)
+            _dkl = DKL(init_x, init_y.squeeze(), n_iter=train_times, low_dim=low_dim, lr=lr, spectrum_norm=spectrum_norm, exact_gp=exact_gp, noise_constraint=global_noise_constraint)
             if regularize:
                 _dkl.train_model_kneighbor_collision()
             else:
@@ -268,7 +281,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 
                 sim_dkbo = DK_BO_AE(x_tensor[ucb_filter], y_tensor[ucb_filter], lr=lr, spectrum_norm=spectrum_norm, low_dim=low_dim,
                                     n_init=n_init,  train_iter=train_times, regularize=regularize, dynamic_weight=False,  retrain_nn=True,
-                                    max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y, exact_gp=exact_gp)
+                                    max=max_val, pretrained_nn=ae, verbose=verbose, init_x=init_x, init_y=init_y, exact_gp=exact_gp, noise_constraint=roi_noise_constraint)
 
                 _roi_ucb = _ucb
                 _roi_lcb, _roi_ucb = sim_dkbo.dkl.CI(x_tensor)
@@ -353,7 +366,11 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                     break
 
                 # iterator.set_postfix(loss=reg_record[rep, :_step_size].min())
-                iterator.set_postfix({'beta': beta, 'fbeta': filter_beta, "roi_beta": _roi_beta, "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio, "Filter Gap": _filter_ucb.min() - _filter_lcb.max()})
+                _filter_gap = _filter_ucb.min() - _filter_lcb.max()
+                _iterator_info = {'beta': beta, 'fbeta': filter_beta, "roi_beta": _roi_beta.detach().item(), "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio.detach().item(), 
+                                  "Filter Gap": _filter_gap.detach().item(), 'roi noise': sim_dkbo.dkl.likelihood.noise.detach().item(), 'global noise': _dkl.likelihood.noise.detach().item()}
+
+                iterator.set_postfix(_iterator_info)
 
                 ucb_filtered_idx = util_array[ucb_filter]
                 observed[ucb_filtered_idx[sim_dkbo.observed==1]] = 1
@@ -364,7 +381,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                 # print("Global GP: ", y_tensor[observed==1].squeeze().size(), f"n_iter={train_times}, low_dim={low_dim},retrain_nn={retrain_nn}, lr={lr}, spectrum_norm={spectrum_norm} regularize {regularize}")
                 _dkl = DKL(x_tensor[observed==1], y_tensor[observed==1].squeeze() if sum(observed) > 1 else y_tensor[observed==1],  
                             n_iter=train_times, low_dim=low_dim, pretrained_nn=ae, retrain_nn=retrain_nn, lr=lr, spectrum_norm=spectrum_norm,
-                            exact_gp=exact_gp)
+                            exact_gp=exact_gp, noise_constraint=global_noise_constraint)
                 # _dkl = DKL(x_tensor[ucb_filter], y_tensor[ucb_filter].squeeze() if sum(ucb_filter) > 1 else y_tensor[ucb_filter],  
                             # n_iter=train_times, low_dim=True)
                 # 

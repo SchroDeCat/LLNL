@@ -66,6 +66,8 @@ if __name__ == "__main__":
     cli_parser.add_argument("--acq_func", nargs='?', default="ts", type=str, help="acquisition function")
     cli_parser.add_argument("--filter_interval", nargs='?', default=10, type=int, help="filtering interval")
     cli_parser.add_argument("--intersection", action="store_false", default=True, help="if using CI's intersection")
+    cli_parser.add_argument("--constrain_noise", action="store_true", default=False, help="if limiting roi and global noise")
+    cli_parser.add_argument("--exact_gp", action="store_true", default=False, help="if using exact_gp")
     cli_parser.add_argument("--return_model", action="store_true", default=False, help="if returning models")
     
     
@@ -108,15 +110,17 @@ if __name__ == "__main__":
             print(f"pretrained ae stored in {cli_args.aedir}")
 
 
-    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim} CI intersection {cli_args.intersection} verbose={verbose}")
+    print(f"Learning rate {learning_rate} Filtering {cli_args.o} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim} CI intersection {cli_args.intersection} verbose={verbose} exact GP {cli_args.exact_gp} constrain noise {cli_args.constrain_noise}")
     if cli_args.o:
         res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta, regularize=cli_args.r,   ci_intersection=cli_args.intersection,
                         n_iter=cli_args.opt_horizon, filter_interval=cli_args.filter_interval, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_times=cli_args.train_times, filter_beta=cli_args.fbeta,
-                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=not cli_args.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir)
+                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=not cli_args.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir, 
+                        exact_gp=cli_args.exact_gp, constrain_noise=cli_args.constrain_noise)
     else:
         pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta,
                         n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_iter=cli_args.train_times,
-                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir,)
+                        plot_result=cli_args.p, save_result=cli_args.s, save_path=cli_args.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=cli_args.aedir,
+                        exact_gp=cli_args.exact_gp, constrain_noise=cli_args.constrain_noise)
 
 
     if cli_args.return_model:

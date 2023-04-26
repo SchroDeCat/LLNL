@@ -43,7 +43,8 @@ def beta_CI(lcb, ucb, beta):
 class DKL():
 
     def __init__(self, train_x, train_y, n_iter=2, lr=1e-6, output_scale=.7, low_dim=False, 
-                 pretrained_nn=None, test_split=False, retrain_nn=True, spectrum_norm=False, exact_gp=False):
+                 pretrained_nn=None, test_split=False, retrain_nn=True, spectrum_norm=False, exact_gp=False, 
+                 noise_constraint=None):
         self.training_iterations = n_iter
         self.lr = lr
         self.train_x = train_x
@@ -87,7 +88,7 @@ class DKL():
             # print(pretrained_nn.state_dict())
             self.feature_extractor.load_state_dict(pretrained_nn.encoder.state_dict(), strict=False)
             # print(self.feature_extractor, pretrained_nn)
-        self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        self.likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_constraint=noise_constraint)
 
 
         self.GPRegressionModel = GPRegressionModel if not self.exact else ExactGPRegressionModel
