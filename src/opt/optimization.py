@@ -101,8 +101,10 @@ def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_ite
 def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True, beta=2, retrain_interval:int=1,
                     pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, exact_gp=False, study_partition=STUDY_PARTITION, constrain_noise=False):
     if constrain_noise:
-        global_noise_constraint = gpytorch.constraints.Interval(0.1,1.3)
-        name = f"{name}-noise_c"
+        # global_noise_constraint = gpytorch.constraints.Interval(0.1,1.3)
+        global_noise_constraint = gpytorch.constraints.Interval(0.1e-4, 1)
+        # name = f"{name}-noise_c"
+        name = f"{name}-noise_c_low"
     else:
         global_noise_constraint = None
     max_val = y_tensor.max()
