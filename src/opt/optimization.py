@@ -110,7 +110,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         global_noise_constraint = None
     
     if ensemble_num > 1:
-        name = f"{name}-en-"
+        name = f"{name}-en-{ensemble_num}-"
 
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
