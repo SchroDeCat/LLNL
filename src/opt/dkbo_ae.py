@@ -87,8 +87,6 @@ class DK_BO_AE():
                 self._pure_dkl.train_model(record_mae=True)
                 self.dkl.train_model(record_mae=True)
             else:
-                # print(self.verbose)
-                # self.dkl.train_model(verbose=self.verbose)
                 self.dkl.train_model(verbose=False)
 
         
@@ -174,4 +172,150 @@ class DK_BO_AE():
         # print(f"observed range in DKBO-AE {self.train_y[self.observed].min()} {self.train_y[self.observed].max()} max val {self.maximum}")
         # print(f"observed range in DKBO-AE {self.train_y[self.observed==1].min()} {self.train_y[self.observed==1].max()} max val {self.maximum}")
 
+
+
+class DK_BO_AE_EN():
+    """
+    Initialize the network with auto-encoder, improved with ensemble
+    """
+    def __init__(self, train_x, train_y, n_init:int=10, lr=1e-6, train_iter:int=10, regularize=True, spectrum_norm=False,
+                dynamic_weight=False, verbose=False, max=None, robust_scaling=True, pretrained_nn=None, low_dim=True,
+                record_loss=False, retrain_nn=True, exact_gp=False, noise_constraint=None, ensemble_num=5, **kwargs):
+        # scale input
+        ScalerClass = RobustScaler if robust_scaling else StandardScaler
+        self.scaler = ScalerClass().fit(train_x)
+        train_x = self.scaler.transform(train_x)
+        # init vars
+        self.regularize = regularize
+        self.lr = lr
+        self.low_dim = low_dim
+        self.verbose = verbose
+        self.n_init = n_init
+        self.n_neighbors = min(self.n_init, 10)
+        self.Lambda = 1
+        self.dynamic_weight = dynamic_weight
+        self.train_x = torch.from_numpy(train_x).float()
+        self.data_size = self.train_x.size(0)
+        self.train_y = train_y
+        self.train_iter = train_iter
+        self.retrain_nn = retrain_nn
+        self.maximum = torch.max(self.train_y) if max==None else max
+        self.init_x = kwargs.get("init_x", self.train_x[:n_init])
+        self.init_y = kwargs.get("init_y", self.train_y[:n_init])
+        self.spectrum_norm = spectrum_norm
+        self.exact = exact_gp # exact GP overide
+        self.noise_constraint = noise_constraint
+        self.ensemble_num = ensemble_num
+
+        # print(f"init_y_max {self.init_y.max()}")
+        self.observed = np.zeros(self.train_x.size(0)).astype("int")
+        # self.observed[:n_init] = True
+        self.pretrained_nn = pretrained_nn
+        self.dkl_list = [None for idx in range(self.ensemble_num)]
+        self._state_dict_record = [None for idx in range(self.ensemble_num)]
+        self._output_scale_record = [None for idx in range(self.ensemble_num)]
+        self._length_scale_record = [None for idx in range(self.ensemble_num)]
+        for model_idx in range(self.ensemble_num):
+            self.dkl_list[model_idx] = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, 
+                        pretrained_nn=self.pretrained_nn, retrain_nn=retrain_nn, spectrum_norm=spectrum_norm, exact_gp=exact_gp, 
+                        noise_constraint = self.noise_constraint)
+
+        self.record_loss = record_loss
+
+        if self.record_loss:
+            assert not (pretrained_nn is None)
+            self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=spectrum_norm, exact_gp=exact_gp)
+            self.loss_record = {"DK-AE":[], "DK":[]}
+        self.cuda = torch.cuda.is_available()
+
+        self.train()
+    
+    def train(self):
+        if self.record_loss:
+            self._pure_dkl.train_model(record_mae=True)
+        for dk in self.dkl_list:
+            if self.regularize:
+                dk.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False, verbose=self.verbose)
+            else:
+                dk.train_model(verbose=False)
+
+        
+
+    def query(self, n_iter:int=10, acq="ts", study_ucb=False, retrain_interval:int=1, **kwargs):
+        self.regret = np.zeros(n_iter)
+        self.interval = np.zeros(n_iter)
+        if_tqdm = kwargs.get("if_tqdm", False)
+        early_stop = kwargs.get("early_stop", True)
+        iterator = tqdm.tqdm(range(n_iter)) if if_tqdm else range(n_iter)
+        study_interval = kwargs.get("study_interval", 10)
+        _path = kwargs.get("study_res_path", None)
+        ci_intersection = kwargs.get("ci_intersection", False)
+        max_test_x_lcb = kwargs.get("max_test_x_lcb", None)
+        min_test_x_ucb = kwargs.get("min_test_x_ucb", None)
+        beta = kwargs.get("beta", 1)
+        _delta = kwargs.get("delta", .2)
+
+        real_beta = beta <= 0 # if using analytic beta
+        _candidate_idx_list = np.zeros(n_iter)
+        _model_candidate_idx_list = np.zeros(self.ensemble_num)
+        _model_candidate_val_list = np.zeros(self.ensemble_num)
+        for i in iterator:
+            if real_beta:
+                beta = (2 * np.log((self.train_x.shape[0] * (np.pi * (self.init_x.shape[0] + 1)) ** 2) /(6 * _delta))) ** 0.5
+            # choose from ensemble
+            for model_idx, dk in enumerate(self.dkl_list):
+                if ci_intersection:
+                    assert not( max_test_x_lcb is None or min_test_x_ucb is None)
+                    # assert acq.lower() in ['ci','ucb','lcb']
+                    candidate_idx = dk.intersect_CI_next_point(self.train_x, 
+                        max_test_x_lcb=max_test_x_lcb, min_test_x_ucb=min_test_x_ucb, acq=acq, beta=beta, return_idx=True)
+                else:
+                    candidate_idx = dk.next_point(self.train_x, acq, "love", return_idx=True, beta=beta,)
+                _model_candidate_idx_list[model_idx] = candidate_idx
+                _model_candidate_val_list[model_idx] = dk.acq_val[candidate_idx]
+            
+            _model_argmax_idx = np.argmax(_model_candidate_val_list)
+            _candidate_idx_list[i] = _model_candidate_idx_list[_model_argmax_idx]
+            # print(self.init_x.size(),  self.train_x[candidate_idx].size())
+            self.init_x = torch.cat([self.init_x, self.train_x[candidate_idx].reshape(1,-1)], dim=0)
+            self.init_y = torch.cat([self.init_y, self.train_y[candidate_idx].reshape(1,-1)])
+            self.observed[candidate_idx] = 1
+
+            # retrain
+            if self.record_loss:
+                    self._pure_dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, low_dim=self.low_dim, pretrained_nn=None, lr=self.lr, spectrum_norm=self.spectrum_norm, exact_gp=self.exact)
+            
+
+            for model_idx, dk in enumerate(self.dkl_list):
+                if i % retrain_interval != 0 and self.low_dim: # allow skipping retrain in low-dim setting
+                    self._state_dict_record[model_idx] = dk.feature_extractor.state_dict()
+                    self._output_scale_record[model_idx] = dk.model.covar_module.base_kernel.outputscale
+                    self._length_scale_record[model_idx] = dk.model.covar_module.base_kernel.base_kernel.lengthscale
+
+                dk = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_iter, lr= self.lr, low_dim=self.low_dim, pretrained_nn=self.pretrained_nn, retrain_nn=self.retrain_nn,
+                                    spectrum_norm=self.spectrum_norm, exact_gp=self.exact, noise_constraint=self.noise_constraint)
+                
+                # self.dkl.train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False)
+                if i % retrain_interval != 0 and self.low_dim:
+                    dk.feature_extractor.load_state_dict(self._state_dict_record[model_idx], strict=False)
+                    dk.model.covar_module.base_kernel.outputscale = self._output_scale_record[model_idx]
+                    dk.model.covar_module.base_kernel.base_kernel.lengthscale = self._length_scale_record[model_idx]
+                else:
+                    self.train()
+
+            if self.record_loss:
+                self.loss_record["DK-AE"].append(dk.mae_record[-1])
+                self.loss_record["DK"].append(self._pure_dkl.mae_record[-1])
+
+            # regret & interval
+            self.regret[i] = self.maximum - torch.max(self.init_y)
+            if self.regret[i] < 1e-10 and early_stop:
+                break
+            if if_tqdm:
+                iterator.set_postfix({"regret":self.regret[i], "Internal_beta": beta})
+            
+            _lcb_mtrx, _ucb_mtrx = torch.zeros([self.ensemble_num, self.data_size])
+            for model_idx, dk in enumerate(self.dkl_list):
+                _lcb_mtrx[model_idx], _ucb_mtrx[model_idx] = dk.CI(self.train_x)
+            self.interval[i] = (_ucb_mtrx.min(dim=0).max() -_lcb_mtrx.max(dim=0).max()).numpy()
 

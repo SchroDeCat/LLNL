@@ -20,7 +20,7 @@ import itertools
 from ..models import DKL, AE, beta_CI
 from ..utils import save_res, load_res, clustering_methods
 from .dkbo_olp import DK_BO_OLP
-from .dkbo_ae import DK_BO_AE
+from .dkbo_ae import DK_BO_AE, DK_BO_AE_EN
 from sparsemax import Sparsemax
 from scipy.stats import ttest_ind
 from sklearn.cluster import MiniBatchKMeans, KMeans
@@ -99,14 +99,19 @@ def dkl_opt_test(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_ite
         pass
 
 def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=40, train_iter=100, return_result=True, fix_seed=True, low_dim=True, beta=2, retrain_interval:int=1,
-                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, exact_gp=False, study_partition=STUDY_PARTITION, constrain_noise=False):
+                    pretrained=False, ae_loc=None, plot_result=False, save_result=False, save_path=None, acq="ts", verbose=True, exact_gp=False, study_partition=STUDY_PARTITION, 
+                    constrain_noise=False, ensemble_num=1):
     if constrain_noise:
         # global_noise_constraint = gpytorch.constraints.Interval(0.1,1.3)
-        global_noise_constraint = gpytorch.constraints.Interval(0.1e-4, 1)
+        global_noise_constraint = gpytorch.constraints.Interval(1e-5, .1)
         # name = f"{name}-noise_c"
         name = f"{name}-noise_c_low"
     else:
         global_noise_constraint = None
+    
+    if ensemble_num > 1:
+        name = f"{name}-en"
+
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
 
@@ -133,9 +138,16 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
             # no AE pretrain 
             if verbose:
                 print("DKBO")
-            sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
+            if ensemble_num == 1:
+                sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
                                 n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
-                                max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp, noise_constraint=global_noise_constraint)
+                                max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp, 
+                                noise_constraint=global_noise_constraint)
+            else:
+                sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
+                                n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
+                                max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp, 
+                                noise_constraint=global_noise_constraint, ensemble_num=ensemble_num)
             sim_dkbo.query(n_iter=n_iter, acq=acq, study_ucb=STUDY_PARTITION, study_interval=10, retrain_interval=retrain_interval, beta=beta, 
                             study_res_path=save_path, if_tqdm=verbose)
             reg_record[rep, :] = sim_dkbo.regret
@@ -175,8 +187,11 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
                    _delta = 0.2, filter_beta=.05, exact_gp=False, constrain_noise=False):
     # print(ucb_strategy)
     if constrain_noise:
-        global_noise_constraint = gpytorch.constraints.Interval(0.7,1.3)
-        roi_noise_constraint = gpytorch.constraints.Interval(0.1,0.7)
+        # global_noise_constraint = gpytorch.constraints.Interval(0.7,1.3)
+        # roi_noise_constraint = gpytorch.constraints.Interval(0.1,0.7)
+        # name = f"{name}-noise_c"
+        global_noise_constraint = gpytorch.constraints.Interval(0.1,.6)
+        roi_noise_constraint = gpytorch.constraints.Interval(1e-5,0.1)
         name = f"{name}-noise_c"
     else:
         global_noise_constraint = None
