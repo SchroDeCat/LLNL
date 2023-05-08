@@ -110,7 +110,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
         global_noise_constraint = None
     
     if ensemble_num > 1:
-        name = f"{name}-en"
+        name = f"{name}-en-"
 
     max_val = y_tensor.max()
     reg_record = np.zeros([n_repeat, n_iter])
@@ -144,7 +144,7 @@ def pure_dkbo(x_tensor, y_tensor, name, n_repeat=2, lr=1e-2, n_init=10, n_iter=4
                                 max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp, 
                                 noise_constraint=global_noise_constraint)
             else:
-                sim_dkbo = DK_BO_AE(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
+                sim_dkbo = DK_BO_AE_EN(x_tensor, y_tensor, lr=lr, low_dim=low_dim,
                                 n_init=n_init,  train_iter=train_iter, regularize=False, dynamic_weight=False, 
                                 max=max_val, pretrained_nn=ae, verbose=verbose, exact_gp=exact_gp, 
                                 noise_constraint=global_noise_constraint, ensemble_num=ensemble_num)

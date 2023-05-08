@@ -100,8 +100,8 @@ if __name__ == "__main__":
         if cli_args.v:
             print(f"pretrained ae stored in {cli_args.aedir}")
 
-    _info = f"Learning rate {learning_rate} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim} CI intersection {cli_args.intersection} verbose={verbose} exact GP {cli_args.exact_gp} constrain noise {cli_args.constrain_noise}"
-    _info += f"Ensemble Num {ensemble_num}"
+    _info = f"Learning rate {learning_rate} fix_seed {fix_seed} beta {cli_args.beta} Regularize {cli_args.r} Low dim {low_dim}"
+    _info += f"verbose={verbose} exact GP {cli_args.exact_gp} constrain noise {cli_args.constrain_noise} Ensemble Num {ensemble_num}"
     print(_info)
     pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=cli_args.init_num, n_repeat=cli_args.run_times, low_dim=low_dim, beta=cli_args.beta,
                     n_iter=cli_args.opt_horizon, acq=cli_args.acq_func, verbose=verbose, lr=learning_rate, name=cli_args.name, train_iter=cli_args.train_times,

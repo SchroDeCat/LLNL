@@ -274,7 +274,8 @@ class DK_BO_AE_EN():
                 _model_candidate_idx_list[model_idx] = candidate_idx
                 _model_candidate_val_list[model_idx] = dk.acq_val[candidate_idx]
             
-            _model_argmax_idx = np.argmax(_model_candidate_val_list)
+            # _model_argmax_idx = np.argmax(_model_candidate_val_list)
+            _model_argmax_idx = np.random.randint(self.ensemble_num)
             _candidate_idx_list[i] = _model_candidate_idx_list[_model_argmax_idx]
             # print(self.init_x.size(),  self.train_x[candidate_idx].size())
             self.init_x = torch.cat([self.init_x, self.train_x[candidate_idx].reshape(1,-1)], dim=0)
@@ -314,8 +315,10 @@ class DK_BO_AE_EN():
             if if_tqdm:
                 iterator.set_postfix({"regret":self.regret[i], "Internal_beta": beta})
             
-            _lcb_mtrx, _ucb_mtrx = torch.zeros([self.ensemble_num, self.data_size])
+            _lcb_mtrx, _ucb_mtrx = torch.zeros([self.ensemble_num, self.data_size]), torch.zeros([self.ensemble_num, self.data_size])
             for model_idx, dk in enumerate(self.dkl_list):
-                _lcb_mtrx[model_idx], _ucb_mtrx[model_idx] = dk.CI(self.train_x)
-            self.interval[i] = (_ucb_mtrx.min(dim=0).max() -_lcb_mtrx.max(dim=0).max()).numpy()
+                _lcb_mtrx[model_idx, :], _ucb_mtrx[model_idx, :] = dk.CI(self.train_x)
+            _ucb_inter = _ucb_mtrx.min(dim=0).values
+            _lcb_inter = _lcb_mtrx.max(dim=0).values
+            self.interval[i] = (_ucb_inter.max() - _lcb_inter.max()).numpy()
 
