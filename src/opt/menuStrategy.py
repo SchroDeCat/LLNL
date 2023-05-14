@@ -91,11 +91,14 @@ class DKBO_OLP(MenuStrategy):
         location of the pretrained Auto Encoder.
     exact_gp:
         if using exact_gp or Deep Kernel
+    constrain_noise:
+        when assuming noise-free / low noise
+
     '''
 
     def __init__(self, x_tensor:torch.tensor, y_tensor:torch.tensor, partition_strategy:str="ballet", num_GP:int=3, low_dim:bool=True,
                     train_times:int=10, acq:str="ts", verbose:bool=True, lr:float=1e-2, name:str="test", ucb_strategy:str="exact",
-                    train:bool=True, pretrained:bool=False, ae_loc:str=None, abag_transform=False, exact_gp:bool=False):
+                    train:bool=True, pretrained:bool=False, ae_loc:str=None, abag_transform=False, exact_gp:bool=False, constrain_noise=False):
         '''
         Args:
             @x_tensor: init x
@@ -122,6 +125,12 @@ class DKBO_OLP(MenuStrategy):
             self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
         else:
             self.device = 'cpu'
+        if constrain_noise:
+            self.global_noise_constraint = gpytorch.constraints.Interval(0.3,.6)
+            self.roi_noise_constraint = gpytorch.constraints.Interval(1e-5,0.3)
+        else:
+            self.global_noise_constraint = None
+            self.roi_noise_constraint = None
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.partition_strategy = partition_strategy
         self.num_GP = num_GP
@@ -155,10 +164,12 @@ class DKBO_OLP(MenuStrategy):
         self.init_x = x_tensor
         self.init_y = y_tensor
         self.n_init = self.init_x.size(0)
-        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim,  pretrained_nn=self.ae, exact_gp=self.exact_gp)
+        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim,  
+                        pretrained_nn=self.ae, exact_gp=self.exact_gp, noise_constraint=self.global_noise_constraint)
         self._dkl.train_model(verbose=verbose)
         self._dkl.model.eval()
-        self._turbo = TuRBO(self.init_x, self.init_y.squeeze(), train_iter=self.train_times, low_dim=self.low_dim,  pretrained_nn=self.ae, acqf=acq, verbose=verbose)
+        self._turbo = TuRBO(self.init_x, self.init_y.squeeze(), train_iter=self.train_times, 
+                            low_dim=self.low_dim,  pretrained_nn=self.ae, acqf=acq, verbose=verbose)
 
     def fit(self,X,y,**kwargs):
         print("DKL OLP has no fit")
@@ -253,7 +264,8 @@ class DKBO_OLP(MenuStrategy):
             raise NotImplementedError(f"{self.partition_strategy} Unknown")
 
         self.model = DK_BO_OLP_Batch(init_x_list, init_y_list, lr=self.lr, train_iter=self.train_times,
-                        n_init=self.n_init, num_GP=self.num_GP, pretrained_nn=self.ae)
+                        n_init=self.n_init, num_GP=self.num_GP, pretrained_nn=self.ae, exact_gp=self.exact_gp, 
+                        noise_constraint=self.roi_noise_constraint)
 
         # batched query
         acq = kwargs.get("acq", "ts")
@@ -321,8 +333,10 @@ class DKBO_OLP(MenuStrategy):
         self.init_x = torch.cat([self.init_x, X])
         self.init_y = torch.cat([self.init_y, y])
         self.n_init = self.init_x.size(0)
-        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim,  pretrained_nn=self.ae, exact_gp=self.exact_gp)
-        self._turbo = TuRBO(self.init_x, self.init_y.squeeze(), train_iter=self.train_times, low_dim=self.low_dim,  pretrained_nn=self.ae, acqf=self.acq, verbose=self.verbose)
+        self._dkl = DKL(self.init_x, self.init_y.squeeze(), n_iter=self.train_times, low_dim=self.low_dim,  
+                        pretrained_nn=self.ae, exact_gp=self.exact_gp, noise_constraint=self.global_noise_constraint)
+        self._turbo = TuRBO(self.init_x, self.init_y.squeeze(), train_iter=self.train_times, low_dim=self.low_dim,  
+                            pretrained_nn=self.ae, acqf=self.acq, verbose=self.verbose)
         # settings to print NLL
         self._dkl.train_model(record_mae=True, record_interval=1, verbose=self.verbose)
         self._dkl.model.eval()
