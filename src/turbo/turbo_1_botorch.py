@@ -1,7 +1,12 @@
 import os
+import sys
 import math
 from dataclasses import dataclass
 from random import random
+
+sys.path.append(f"{os.path.dirname(__file__)}/..")
+
+from models import LargeFeatureExtractor, GPRegressionModel, ExactGPRegressionModel
 
 import torch
 from botorch.acquisition import qExpectedImprovement
@@ -50,13 +55,16 @@ class TurboState:
         )
 
 class TuRBO():
+    def obj_func(self, pts):
+        diff = torch.abs(self._train_x[:, :pts.size(0)] - pts)
+        index = torch.argmin(torch.sum(diff, dim=1))
+        return self._train_y[index]
+    
     def __init__(self, train_x, train_y, n_init:int=10, acqf="ts", batch_size = 1, verbose=True, low_dim:bool=True,
                     num_restarts=2, raw_samples = 512, discrete=True, pretrained_nn=None, train_iter=10, learning_rate=1e-2):
                 
-        def obj_func(pts):
-            diff = torch.abs(train_x[:, :pts.size(0)] - pts)
-            index = torch.argmin(torch.sum(diff, dim=1))
-            return train_y[index]
+        self._train_x = train_x
+        self._train_y = train_y
         self.maximum = train_y.max()
         # low_dim=False
         self.low_dim = low_dim
@@ -64,7 +72,7 @@ class TuRBO():
         self.training_iterations = train_iter
         # print("train iter", self.training_iterations)
         self.lr = learning_rate
-        self.obj_func = obj_func
+        # self.obj_func = obj_func
         self.test_x = train_x if not discrete else train_x.float()
         self.test_y = train_y if not discrete else train_y.float()
         # self.X_turbo = get_initial_points(dim, n_init)
@@ -103,48 +111,7 @@ class TuRBO():
                 return torch.nn.utils.parametrizations.spectral_norm(module)
             else:
                 return module
-        class LargeFeatureExtractor(torch.nn.Sequential):
-            def __init__(self, data_dim):
-                super(LargeFeatureExtractor, self).__init__()
-                self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
-                self.add_module('relu1', torch.nn.ReLU())
-                self.add_module('linear2',  add_spectrum_norm(torch.nn.Linear(1000, 500)))
-                self.add_module('relu2', torch.nn.ReLU())
-                self.add_module('linear3',  add_spectrum_norm(torch.nn.Linear(500, 50)))
-                # test if using higher dimensions could be better
-                if low_dim:
-                    self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 1)))
-                else:
-                    self.add_module('relu3', torch.nn.ReLU())
-                    self.add_module('linear4',  add_spectrum_norm(torch.nn.Linear(50, 10)))
-
-        class GPRegressionModel(gpytorch.models.ExactGP):
-                def __init__(self, train_x, train_y, gp_likelihood, gp_feature_extractor):
-                    super(GPRegressionModel, self).__init__(train_x, train_y, gp_likelihood)
-                    self.feature_extractor = gp_feature_extractor
-                    # self.mean_module = gpytorch.means.ConstantMean(constant_prior=train_y.mean())
-                    self.mean_module = gpytorch.means.ConstantMean()
-                    if low_dim:
-                        self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-                            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=1)),
-                                                            num_dims=1, grid_size=100)
-                            # outputscale_constraint=gpytorch.constraints.Interval(0.7,1.0)),
-                    else:
-                        self.covar_module = gpytorch.kernels.LinearKernel(num_dims=10)
-
-                    # This module will scale the NN features so that they're nice values
-                    self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
-
-                def forward(self, x):
-                    # We're first putting our data through a deep net (feature extractor)
-                    self.projected_x = self.feature_extractor(x)
-                    self.projected_x = self.scale_to_bounds(self.projected_x)  # Make the NN values "nice"
-
-                    mean_x = self.mean_module(self.projected_x)
-                    covar_x = self.covar_module(self.projected_x)
-                    return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-
+            
         self.LargeFeatureExtractor, self.GPRegressionModel = LargeFeatureExtractor, GPRegressionModel
     
     def opt(self, max_iter:int=100, retrain_interval:int=20, **kwargs):

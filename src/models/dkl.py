@@ -109,9 +109,9 @@ class DKL():
         self.model.train()
         self.likelihood.train()
         record_mae = kwargs.get("record_mae", False) 
+        record_interval = kwargs.get("record_interval", 1)
         # Record MAE within a single training
         if record_mae: 
-            record_interval = kwargs.get("record_interval", 1)
             self.mae_record = np.zeros(self.training_iterations//record_interval)
             self._train_mae_record = np.zeros(self.training_iterations//record_interval)
 
@@ -135,43 +135,55 @@ class DKL():
         # "Loss" for GPs - the marginal log likelihood
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
         if loss_type.lower() == "nll":
-            self.loss_func = lambda pred, y: -self.mll(pred, y)
+            # self.loss_func = lambda pred, y: -self.mll(pred, y)
+            self.loss_func = self._mll_loss
         elif loss_type.lower() == "mse":
-            tmp_loss = torch.nn.MSELoss()
-            self.loss_func = lambda pred, y: tmp_loss(pred.mean, y)
+            # tmp_loss = torch.nn.MSELoss()
+            # self.loss_func = lambda pred, y: tmp_loss(pred.mean, y)
+            self.loss_func = self._mse_loss
         else:
             raise NotImplementedError(f"{loss_type} not implemented")
 
-        def train(verbose=False):
-            iterator = tqdm.tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
-            for i in iterator:
-                # Zero backprop gradients
-                self.optimizer.zero_grad()
-                # Get output from model
-                self.output = self.model(self.train_x)
-                # Calc loss and backprop derivatives
-                # print("loss", self.output.mean, self.train_y, self.loss_func)
-                self.loss = self.loss_func(self.output, self.train_y)
-                # print('backward')
-                self.loss.backward()
-                self.optimizer.step()
-                # print("record")
-                if record_mae and (i + 1) % record_interval == 0:
-                    self.mae_record[i//record_interval] = self.predict(self._x, self._y, verbose=False)
-                    if self.test_split:
-                        self._train_mae_record[i//record_interval] = self.predict(self._x_train, self._y_train, verbose=False)
-                    else:
-                        self._train_mae_record[i//record_interval] = self.mae_record[i//record_interval]
-                    if verbose:
-                        iterator.set_postfix({"NLL": self.loss.item(),
-                                        "Test MAE":self.mae_record[i//record_interval], 
-                                        "Train MAE": self._train_mae_record[i//record_interval] })
-                    self.model.train()
-                    self.likelihood.train()
-                elif verbose:
-                    iterator.set_postfix(loss=self.loss.item())
-                # iterator.set_description(f'ML (loss={self.loss:.4})')
-        train(verbose)
+
+        self._train(verbose, record_interval=record_interval, record_mae=record_mae)
+
+    def _mll_loss(self, pred, y):
+        assert hasattr(self, 'mll')
+        return -self.mll(pred, y)
+
+    def _mse_loss(self, pred, y):
+        tmp_loss = torch.nn.MSELoss()
+        return tmp_loss(pred.mean, y)
+
+    def _train(self, verbose=False, record_mae=False, record_interval=10):
+        iterator = tqdm.tqdm(range(self.training_iterations)) if verbose else range(self.training_iterations)
+        for i in iterator:
+            # Zero backprop gradients
+            self.optimizer.zero_grad()
+            # Get output from model
+            self.output = self.model(self.train_x)
+            # Calc loss and backprop derivatives
+            # print("loss", self.output.mean, self.train_y, self.loss_func)
+            self.loss = self.loss_func(self.output, self.train_y)
+            # print('backward')
+            self.loss.backward()
+            self.optimizer.step()
+            # print("record")
+            if record_mae and (i + 1) % record_interval == 0:
+                self.mae_record[i//record_interval] = self.predict(self._x, self._y, verbose=False)
+                if self.test_split:
+                    self._train_mae_record[i//record_interval] = self.predict(self._x_train, self._y_train, verbose=False)
+                else:
+                    self._train_mae_record[i//record_interval] = self.mae_record[i//record_interval]
+                if verbose:
+                    iterator.set_postfix({"NLL": self.loss.item(),
+                                    "Test MAE":self.mae_record[i//record_interval], 
+                                    "Train MAE": self._train_mae_record[i//record_interval] })
+                self.model.train()
+                self.likelihood.train()
+            elif verbose:
+                iterator.set_postfix(loss=self.loss.item())
+            # iterator.set_description(f'ML (loss={self.loss:.4})')
 
     def predict(self, test_x, test_y, verbose=True, return_pred=False):
         self.model.eval()
