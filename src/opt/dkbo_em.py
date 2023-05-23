@@ -57,7 +57,6 @@ class DK_BO_EM():
             self.dkl_list.append(tmp_dkl)
 
         self.cuda = torch.cuda.is_available()
-        # gpytorch.add_jitter(self.dkl.model.)
 
         for idx in range(num_GP):
             self.train(idx)

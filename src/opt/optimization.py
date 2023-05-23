@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from ..models import DKL, AE, beta_CI
-from ..utils import save_res, load_res, clustering_methods
+from ..utils import save_res, clustering_methods
 from .dkbo_olp import DK_BO_OLP
 from .dkbo_ae import DK_BO_AE, DK_BO_AE_EN
  

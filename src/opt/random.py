@@ -19,7 +19,6 @@ class RandomOpt:
         for i in range(self.repeat):
             self._selection = np.random.choice(self.y.squeeze().size(0), horizon, replace=True)
             self._ys = self.y.squeeze()[self._selection]
-            # print(f"self._ys {self._ys.shape} self.y {self.y.shape} ")
             self.regret[i] = np.minimum.accumulate(self.max - self._ys)
     
 
