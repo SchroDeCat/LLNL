@@ -58,8 +58,6 @@ class DK_BO_OLP():
             self.dkl_list[idx].train_model_kneighbor_collision(self.n_neighbors, Lambda=self.Lambda, dynamic_weight=self.dynamic_weight, return_record=False, verbose=self.verbose)
         else:
             self.dkl_list[idx].train_model() 
-            # self.dkl_list[idx].model.covar_module.base_kernel.outputscale=1
-            # print(self.dkl_list[idx].model.covar_module.base_kernel.outputscale.item())
 
     def query(self, n_iter:int=10, acq="ts", verbose=False):
         self.acq = acq
