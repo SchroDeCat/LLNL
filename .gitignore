@@ -137,7 +137,8 @@ plot_lamcts.py
 /res/illustration
 /res/turboM
 /res/visualization
-/res/batch
+/res/batch*
+/res/debug
 .vscode
 .DS_Store
 *.png
@@ -145,3 +146,6 @@ plot_lamcts.py
 *.pt
 *.npy
 *.zip
+*.ipynb
+*.slr
+

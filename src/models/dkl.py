@@ -1,34 +1,12 @@
 import gpytorch
-import os
-import random
 import torch
 import tqdm
-import time
-import matplotlib
-import math
-import warnings
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import datetime
-import itertools
 
 # from src.utils import beta_CI
 from .exact_gp import ExactGPRegressionModel
 from .module import LargeFeatureExtractor, GPRegressionModel
 from .sgld import SGLD
-from sparsemax import Sparsemax
-from scipy.stats import ttest_ind
-from sklearn.cluster import MiniBatchKMeans, KMeans
-from sklearn.metrics.pairwise import pairwise_distances_argmin
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.kernel_ridge import KernelRidge
-from sklearn.metrics import mean_absolute_error
-from sklearn.preprocessing import StandardScaler, RobustScaler
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,10 +62,7 @@ class DKL():
 
         self.feature_extractor = LargeFeatureExtractor(self.data_dim, self.low_dim, add_spectrum_norm=add_spectrum_norm)
         if not (pretrained_nn is None):
-            # print(self.feature_extractor.state_dict())
-            # print(pretrained_nn.state_dict())
             self.feature_extractor.load_state_dict(pretrained_nn.encoder.state_dict(), strict=False)
-            # print(self.feature_extractor, pretrained_nn)
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_constraint=noise_constraint)
 
 
@@ -102,10 +77,8 @@ class DKL():
             self.train_x = self.train_x.cuda()
             self.train_y = self.train_y.cuda()
     
-    # def train_model(self, loss_type="mse", verbose=False, **kwargs):
     def train_model(self, loss_type="nll", verbose=False, **kwargs):
         # Find optimal model hyperparameters
-        # print(verbose)
         self.model.train()
         self.likelihood.train()
         record_mae = kwargs.get("record_mae", False) 
@@ -135,11 +108,8 @@ class DKL():
         # "Loss" for GPs - the marginal log likelihood
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
         if loss_type.lower() == "nll":
-            # self.loss_func = lambda pred, y: -self.mll(pred, y)
             self.loss_func = self._mll_loss
         elif loss_type.lower() == "mse":
-            # tmp_loss = torch.nn.MSELoss()
-            # self.loss_func = lambda pred, y: tmp_loss(pred.mean, y)
             self.loss_func = self._mse_loss
         else:
             raise NotImplementedError(f"{loss_type} not implemented")

@@ -33,8 +33,8 @@ class ExactGPRegressionModel(gpytorch.models.ExactGP):
             self.scale_to_bounds = gpytorch.utils.grid.ScaleToBounds(-1., 1.)
 
         def forward(self, x):
-            self.projected_x = x
-            # self.projected_x = self.scale_to_bounds(x)  # Make the values "nice"
+            # self.projected_x = x
+            self.projected_x = self.scale_to_bounds(x)  # Make the values "nice"
 
             mean_x = self.mean_module(self.projected_x)
             covar_x = self.covar_module(self.projected_x)

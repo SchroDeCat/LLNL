@@ -1,32 +1,11 @@
-import gpytorch
-import os
+
 import random
 import torch
 import tqdm
-import time
-import matplotlib
-import math
-import warnings
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import datetime
-import itertools
 
 from ..models import DKL
-from sparsemax import Sparsemax
-from scipy.stats import ttest_ind
-from sklearn.cluster import MiniBatchKMeans, KMeans
-from sklearn.metrics.pairwise import pairwise_distances_argmin
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.kernel_ridge import KernelRidge
-from sklearn.metrics import mean_absolute_error
 from sklearn.preprocessing import StandardScaler, RobustScaler
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.neighbors import NearestNeighbors
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -68,7 +47,6 @@ class DK_BO():
         self.dkl = DKL(self.init_x, self.init_y.squeeze(), lr=self.lr,  n_iter=self.train_iter, low_dim=True)
         self.cuda = torch.cuda.is_available()
         # self.cuda = False
-        # gpytorch.add_jitter(self.dkl.model.)
 
         self.train()
 
