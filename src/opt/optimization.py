@@ -365,7 +365,7 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
 
                 # iterator.set_postfix(loss=reg_record[rep, :_step_size].min())
                 _filter_gap = _filter_ucb.min() - _filter_lcb.max()
-                _iterator_info = {'beta': beta, 'fbeta': filter_beta, "roi_beta": _roi_beta.detach().item(), "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio.detach().item(), 
+                _iterator_info = {'beta': beta, 'fbeta': filter_beta, "roi_beta": _roi_beta, "regret":reg_record[rep, :_step_size].min(), "Filter Ratio": filter_ratio.detach().item(), 
                                   "Filter Gap": _filter_gap.detach().item(), 'roi noise': sim_dkbo.dkl.likelihood.noise.detach().item(), 'global noise': _dkl.likelihood.noise.detach().item()}
 
                 iterator.set_postfix(_iterator_info)
@@ -398,7 +398,8 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
     
     beta = 0 if default_beta else beta # for record
 
-    __file_name = f"BALLET{'-Exact' if exact_gp else ''}-{name}-B{beta}-FB{filter_beta}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}-RI{retrain_interval}{'-sec' if ci_intersection else ''}"
+    _file_prefix = f"BALLET{'-Exact' if exact_gp else ''}-{name}-B{beta}-FB{filter_beta}"
+    __file_name = f"{_file_prefix}-{acq}-R{n_repeat}-P{1}-T{n_iter}_I{filter_interval}_L{int(-np.log10(lr))}-TI{train_times}-RI{retrain_interval}{'-sec' if ci_intersection else ''}"
     if plot_result:
         # regret
         fig = plt.figure()
@@ -433,13 +434,13 @@ def ol_filter_dkbo(x_tensor, y_tensor, n_init=10, n_repeat=2, train_times=10, be
 
     if save_result:
         assert not (save_path is None)
-        save_res(save_path=save_path, name=f"Regret-{__file_name}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"Regret-{_file_prefix}", res=reg_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
         
-        save_res(save_path=save_path, name=f"Filter-Ratio-{__file_name}", res=ratio_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"Filter-Ratio-{_file_prefix}", res=ratio_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
 
-        save_res(save_path=save_path, name=f"Interval-{__file_name}", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
+        save_res(save_path=save_path, name=f"Interval-{_file_prefix}", res=max_LUCB_interval_record, n_repeat=n_repeat, num_GP=2, n_iter=n_iter, train_iter=train_times,
                 init_strategy='none', cluster_interval=filter_interval, acq=acq, lr=lr, ucb_strategy="exact", ci_intersection=ci_intersection, verbose=verbose,)
 
 
