@@ -39,16 +39,18 @@ EXACT=False
 # parse the cli
 class Configuration():
     def __init__(self, name:str, ae_dir:str, data_dir:str, run_times:int=1, horizon:int=10, acq:str='ci', fbeta=0.2, beta=0, train_time=10,
-        intersection=False, ballet=True, high_dim=False, exact_gp=EXACT, retrain_interval:int=1) -> None:
+        intersection=False, ballet=True, high_dim=False, exact_gp=EXACT, retrain_interval:int=1, constrain_noise:bool=False) -> None:
         self.name   = name
         self.aedir  = f"./tmp/{ae_dir}"
         # self.subdir = f"./res/aistats/{acq}"  
-        self.subdir = f"./res/icml/{acq}"
+        # self.subdir = f"./res/icml/{acq}"
+        self.subdir = f"./res/icml_revision/{acq}"
         # self.subdir = './res/ei'
         self.datadir=f"./data/{data_dir}" 
         self.run_times  =run_times
         self.acq_func = acq
-        self.learning_rate = 4  
+        # self.learning_rate = 4  
+        self.learning_rate = 2
         self.intersection=intersection  
         self.a=False
         self.r=False
@@ -73,6 +75,7 @@ class Configuration():
         self.learning_rate=4
         self.fbeta = fbeta
         self.exact = exact_gp
+        self.constrain_noise = constrain_noise
 
 def plot_pure_dkbo(config):
     save_path = config.subdir
@@ -155,11 +158,12 @@ def process(config):
         res = ol_filter_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output, n_init=config.init_num, n_repeat=config.run_times, low_dim=low_dim, beta=config.beta, regularize=config.r,   
                         retrain_interval=config.retrain_interval, ci_intersection=config.intersection,
                         n_iter=config.opt_horizon, filter_interval=config.filter_interval, acq=config.acq_func, verbose=verbose, lr=learning_rate, name=config.name, train_times=config.train_times, filter_beta=config.fbeta,
-                        plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=not config.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir, exact_gp=config.exact)
+                        plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=not config.return_model, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir, exact_gp=config.exact,
+                        constrain_noise=config.constrain_noise)
     else:
         pure_dkbo(x_tensor=scaled_input_tensor, y_tensor=train_output,  n_init=config.init_num, n_repeat=config.run_times, low_dim=low_dim, beta=config.beta, retrain_interval=config.retrain_interval,
                         n_iter=config.opt_horizon, acq=config.acq_func, verbose=verbose, lr=learning_rate, name=config.name, train_iter=config.train_times, exact_gp=config.exact,
-                        plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir,)
+                        plot_result=config.p, save_result=config.s, save_path=config.subdir, return_result=True, fix_seed=fix_seed,  pretrained=pretrained, ae_loc=config.aedir, constrain_noise=config.constrain_noise)
 
 
 
@@ -269,12 +273,15 @@ if __name__ == "__main__":
             # {"name": "water_converter", "ae_dir": "water_converter_ae", "data_dir":"water_converter.npy",       "fbeta":0.005, "horizon":100, "high_dim": True},
             # {"name": "gb1",             "ae_dir": "gb1_embed_ae",       "data_dir":"gb1_embed.npy",             "fbeta":0.08, "horizon":200,}]
     
+    # exps = [ {"name": "rosetta",         "ae_dir": "x_rosetta_ae",       "data_dir":"data_oct_x_to_Rosetta.pt",  "fbeta":0.2, "horizon":300, "high_dim": False, 'train_iter':50, 'retrain_interval':1, 'constrain_noise':True}]
+    # exps = [{"name": "gb1", "ae_dir": "gb1_embed_ae", "data_dir":"gb1_embed.npy",  "fbeta":.01,  "horizon":300, "high_dim": False, 'train_iter':50, 'retrain_interval':1, 'constrain_noise':True},]
+    exps = [{"name": "gb1", "ae_dir": "gb1_embed_ae", "data_dir":"gb1_embed.npy",  "fbeta":.2,  "horizon":300, "high_dim": False, 'train_iter':10, 'retrain_interval':1, 'constrain_noise':True},]
     for exp in exps:
         for ballet in [True, False]:
             if ballet:
                 # continue
                 for intersection in [True, False]:
-                    # acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci', 'qei']
+                    acqs = ['ci', 'ucb'] if intersection else ['ts', 'ucb','ci', 'qei']
                     # acqs = [ 'ucb'] if intersection else ['ts', 'ucb']
                     # if not intersection:
                         # continue
@@ -286,26 +293,27 @@ if __name__ == "__main__":
                     # acqs = ['qei', 'ts']
                     # acqs = ['ts']
                     # acqs = ['qei']
-                    acqs = []
+                    # acqs = []
 
                     for acq in acqs:
                         print(acq, exp, "ballet", ballet, 'intersection', intersection)
                         config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], retrain_interval=exp['retrain_interval'],
                                     run_times=run_times, horizon=exp["horizon"], acq=acq, fbeta=exp["fbeta"],
-                                    intersection=intersection, ballet=ballet, high_dim=exp["high_dim"], train_time=exp["train_iter"])
+                                    intersection=intersection, ballet=ballet, high_dim=exp["high_dim"], train_time=exp["train_iter"], constrain_noise=exp.get("constrain_noise", False))
                         process(config)
             else:
                 # acqs = ['rci']
                 # acqs = ['ts', 'ucb','ci', 'rci']
+                acqs = ['ts', 'ucb','ci', 'qei']
                 # acqs = ['ts']
                 # acqs = [ 'qei']
                 # acqs = []
                 # acqs = ['ts','ucb']
-                acqs = ['ci']
+                # acqs = ['ci']
                 for acq in acqs:
                     print(acq, exp, "ballet", ballet)
                     config = Configuration(name=exp['name'], ae_dir=exp["ae_dir"], data_dir=exp["data_dir"], retrain_interval=exp['retrain_interval'],
                                         run_times=run_times, horizon=exp["horizon"], acq=acq, fbeta=exp["fbeta"], 
-                                        intersection=False, ballet=ballet, high_dim=exp["high_dim"], train_time=exp["train_iter"])
+                                        intersection=False, ballet=ballet, high_dim=exp["high_dim"], train_time=exp["train_iter"], constrain_noise=exp.get("constrain_noise", False))
                     process(config)
                     # plot_pure_dkbo(config)
