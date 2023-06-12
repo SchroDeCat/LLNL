@@ -33,8 +33,9 @@ from sklearn.neighbors import NearestNeighbors
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class LargeFeatureExtractor(torch.nn.Sequential):
-    def __init__(self, data_dim, low_dim, add_spectrum_norm):
-        
+    def __init__(self, data_dim, low_dim=True, add_spectrum_norm=None):
+        if add_spectrum_norm is None:
+            add_spectrum_norm = lambda x: x
         super(LargeFeatureExtractor, self).__init__()
         self.add_module('linear1', add_spectrum_norm(torch.nn.Linear(data_dim, 1000)))
         self.add_module('relu1', torch.nn.ReLU())
